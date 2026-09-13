@@ -4,6 +4,7 @@ import ConnectCalls
 import ConnectChat
 import ConnectCore
 import ConnectFeatures
+import ConnectInbox
 import ConnectNetworking
 import ConnectTestSupport
 import Foundation
@@ -127,6 +128,18 @@ enum UITestStub {
             contacts: ["qa-1": contacts],
             directory: contacts + [
                 Contact(userId: "qa-4", name: "QA Wallpaper Four", username: "qa_wallpaper_4", status: .online, avatarKey: "user-gallery/qa-4/avatar.png"),
+            ]
+        )
+    }
+
+    /// Уведомление о сообщении и входящее приглашение в группу.
+    static func makeInboxAPI() -> FakeInboxAPI {
+        FakeInboxAPI(
+            notifications: [
+                InboxNotification(id: 7, messageId: "00000000-0000-4000-8000-000000000004", chatId: "room-qa-2", chatType: .p2p, body: "Да, скинул файл", createdAt: Date().addingTimeInterval(-300)),
+            ],
+            invitations: [
+                Invitation(id: "inv-1", kind: .group, targetId: "group-1", senderUserId: "qa-2", recipientUserId: "qa-1", senderName: "QA Wallpaper Two", recipientName: "QA Wallpaper", targetName: "QA Group", createdAt: Date().addingTimeInterval(-600)),
             ]
         )
     }

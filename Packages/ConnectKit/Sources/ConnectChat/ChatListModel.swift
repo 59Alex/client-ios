@@ -84,6 +84,9 @@ public final class UnreadModel {
     public private(set) var summary = NotificationSummary(unread: 0, chats: [])
     /// Растёт при каждом изменении сводки: списки чатов перечитывают превью.
     public private(set) var revision = 0
+    /// Растёт на каждое событие потока, кроме heartbeat: центр уведомлений и приглашения перечитываются.
+    public private(set) var eventRevision = 0
+    public private(set) var lastEventKind: String?
 
     private let api: any ChatAPI
     private let sleep: @Sendable (Duration) async throws -> Void
@@ -125,7 +128,9 @@ public final class UnreadModel {
             do {
                 for try await event in api.notificationEvents() {
                     delay = 1.5
-                    if case .changed = event {
+                    if case let .changed(kind) = event {
+                        lastEventKind = kind
+                        eventRevision += 1
                         await refresh()
                     }
                 }

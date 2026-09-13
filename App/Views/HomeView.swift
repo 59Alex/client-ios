@@ -3,6 +3,7 @@ import ConnectChat
 import ConnectCore
 import ConnectFeatures
 import ConnectFiles
+import ConnectInbox
 import PhotosUI
 import SwiftUI
 
@@ -13,15 +14,35 @@ struct HomeView: View {
 
     private var calls: P2PCallModel { dependencies.calls }
     @State private var navigation = AppNavigation()
+    @State private var isInboxShown = false
+    @State private var isCreateGroupShown = false
+
+    private var inboxBadge: Int {
+        dependencies.unread.summary.unread + dependencies.invitations.pendingCount
+    }
+
+    private var groupTools: GroupTools {
+        let contacts = dependencies.contacts
+        let inbox = dependencies.inbox
+        return GroupTools(
+            contacts: {
+                if case let .loaded(list) = contacts.state { return list }
+                return []
+            },
+            invite: { groupId, contact in
+                (try? await inbox.invite(kind: .group, targetId: groupId, recipientUserId: contact.userId)) != nil
+            }
+        )
+    }
 
     var body: some View {
         ZStack {
             TabView(selection: $navigation.tab) {
-                ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.chatsPath)
+                ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.chatsPath, inboxBadge: inboxBadge, onOpenInbox: { isInboxShown = true }, groupTools: groupTools)
                     .tabItem { Label("Чаты", systemImage: "bubble.left.and.bubble.right") }
                     .badge(dependencies.unread.unreadCount(kind: .p2p))
                     .tag(AppNavigation.Tab.chats)
-                ChatListView(model: dependencies.groupChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.groupsPath)
+                ChatListView(model: dependencies.groupChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.groupsPath, inboxBadge: inboxBadge, onOpenInbox: { isInboxShown = true }, onCreateGroup: { isCreateGroupShown = true }, groupTools: groupTools)
                     .tabItem { Label("Группы", systemImage: "person.3") }
                     .badge(dependencies.unread.unreadCount(kind: .group))
                     .tag(AppNavigation.Tab.groups)
@@ -35,6 +56,21 @@ struct HomeView: View {
                     .tag(AppNavigation.Tab.profile)
             }
             .environment(\.mediaLoader, dependencies.mediaLoader)
+            .sheet(isPresented: $isInboxShown) {
+                InboxView(notifications: dependencies.notifications, invitations: dependencies.invitations) { route in
+                    Task {
+                        if route.kind == .group { await dependencies.groupChats.load() }
+                        navigation.open(route)
+                    }
+                }
+                .environment(\.mediaLoader, dependencies.mediaLoader)
+            }
+            .sheet(isPresented: $isCreateGroupShown) {
+                CreateGroupSheet(model: CreateGroupModel(me: dependencies.user.userId, api: dependencies.inbox), contacts: groupTools.contacts()) {
+                    Task { await dependencies.groupChats.load() }
+                }
+                .environment(\.mediaLoader, dependencies.mediaLoader)
+            }
             .accessibilityHidden(calls.isInCall)
 
             // Слой, а не fullScreenCover: состояние звонка целиком в модели, закрывать экран жестом нельзя.
@@ -48,6 +84,15 @@ struct HomeView: View {
         .task { await dependencies.status.keepAlive(userId: dependencies.user.userId) }
         .task { await calls.runIncomingCalls() }
         .task { await dependencies.unread.run() }
+        .task { await dependencies.invitations.load() }
+        .task { await dependencies.contacts.load() }
+        .task(id: dependencies.unread.eventRevision) {
+            guard dependencies.unread.eventRevision > 0 else { return }
+            await dependencies.invitations.load()
+            if dependencies.unread.lastEventKind == "invitation" || dependencies.unread.lastEventKind == "sync" {
+                await dependencies.groupChats.load()
+            }
+        }
     }
 
     private func logout() async {

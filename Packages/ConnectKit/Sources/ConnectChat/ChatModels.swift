@@ -1,3 +1,4 @@
+import ConnectCore
 import Foundation
 
 public enum ChatKind: String, Sendable, Equatable, Hashable, Codable {
@@ -424,13 +425,12 @@ public struct ChatSnapshot: Decodable, Sendable, Equatable {
     public var role: Role?
     public var meetingsAllowed: Bool
     public var memberCount: Int
+    public var members: [Contact]
     public var messages: MessagePage
 
     enum CodingKeys: String, CodingKey {
         case id, name, username, userId, chatPartnerBanned, banned, roomRole, meetingsAllowed, members, messages
     }
-
-    struct Member: Decodable {}
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -442,7 +442,8 @@ public struct ChatSnapshot: Decodable, Sendable, Equatable {
         banned = try container.decodeIfPresent(Bool.self, forKey: .banned) ?? false
         role = try? container.decodeIfPresent(Role.self, forKey: .roomRole)
         meetingsAllowed = try container.decodeIfPresent(Bool.self, forKey: .meetingsAllowed) ?? false
-        memberCount = (try? container.decodeIfPresent([Member].self, forKey: .members))?.count ?? 0
+        members = (try? container.decodeIfPresent([Contact].self, forKey: .members)) ?? []
+        memberCount = members.count
         messages = try container.decodeIfPresent(MessagePage.self, forKey: .messages)
             ?? MessagePage(content: [], number: 0, last: true, totalElements: 0)
     }
@@ -457,6 +458,7 @@ public struct ChatSnapshot: Decodable, Sendable, Equatable {
         role = nil
         meetingsAllowed = false
         memberCount = 0
+        members = []
         self.messages = messages
     }
 }

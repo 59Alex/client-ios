@@ -12,6 +12,7 @@ let package = Package(
         .library(name: "ConnectCalls", targets: ["ConnectCalls"]),
         .library(name: "ConnectChat", targets: ["ConnectChat"]),
         .library(name: "ConnectFiles", targets: ["ConnectFiles"]),
+        .library(name: "ConnectInbox", targets: ["ConnectInbox"]),
         .library(name: "ConnectTestSupport", targets: ["ConnectTestSupport"]),
     ],
     targets: [
@@ -21,12 +22,14 @@ let package = Package(
         .target(name: "ConnectFeatures", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectAuth"]),
         .target(name: "ConnectCalls", dependencies: ["ConnectCore", "ConnectNetworking"]),
         .target(name: "ConnectFiles", dependencies: ["ConnectNetworking"]),
+        .target(name: "ConnectInbox", dependencies: ["ConnectNetworking"]),
         .target(name: "ConnectChat", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls", "ConnectFiles"]),
-        .target(name: "ConnectTestSupport", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls", "ConnectChat", "ConnectFiles", "ConnectFeatures"]),
+        .target(name: "ConnectTestSupport", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls", "ConnectChat", "ConnectFiles", "ConnectFeatures", "ConnectInbox"]),
         .testTarget(name: "ConnectNetworkingTests", dependencies: ["ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectAuthTests", dependencies: ["ConnectAuth", "ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectFeaturesTests", dependencies: ["ConnectFeatures", "ConnectAuth", "ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectChatTests", dependencies: ["ConnectChat", "ConnectCalls", "ConnectNetworking", "ConnectTestSupport", "ConnectFiles"]),
+        .testTarget(name: "ConnectInboxTests", dependencies: ["ConnectInbox", "ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectFilesTests", dependencies: ["ConnectFiles", "ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectCallsTests", dependencies: ["ConnectCalls", "ConnectCore", "ConnectNetworking", "ConnectTestSupport"]),
     ]

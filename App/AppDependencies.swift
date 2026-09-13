@@ -4,6 +4,7 @@ import ConnectChat
 import ConnectCore
 import ConnectFeatures
 import ConnectFiles
+import ConnectInbox
 import ConnectNetworking
 import Foundation
 #if DEBUG
@@ -33,6 +34,7 @@ final class AppDependencies {
         var makeSignalRoom: (@MainActor () -> any SignalRoom)?
         var fileAPI: (any FileAPI)?
         var contacts: (any ContactsRepository)?
+        var inbox: (any InboxAPI)?
     }
 
     init(
@@ -72,6 +74,7 @@ final class AppDependencies {
         let unread = UnreadModel(api: chatAPI)
         let makeSignalRoom = overrides.makeSignalRoom ?? { LiveKitCallRoom() }
         let chatUser = ChatUser(userId: user.userId, username: user.username)
+        let inbox = overrides.inbox ?? RemoteInboxAPI(main: mainClient, notifications: notificationClient)
         let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client)
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("connect-media", isDirectory: true)
@@ -85,6 +88,9 @@ final class AppDependencies {
             files: files,
             mediaLoader: MediaLoader(api: files, cacheDirectory: overrides.fileAPI == nil ? cacheDirectory : nil),
             unread: unread,
+            inbox: inbox,
+            notifications: NotificationCenterModel(api: inbox),
+            invitations: InvitationsModel(me: user.userId, api: inbox),
             p2pChats: ChatListModel(kind: .p2p, api: chatAPI),
             groupChats: ChatListModel(kind: .group, api: chatAPI),
             makeChat: { route in
@@ -116,7 +122,8 @@ final class AppDependencies {
                     chatAPI: UITestStub.makeChatAPI(),
                     makeSignalRoom: { FakeCallRoom() },
                     fileAPI: UITestStub.makeFileAPI(),
-                    contacts: UITestStub.makeContactsRepository()
+                    contacts: UITestStub.makeContactsRepository(),
+                    inbox: UITestStub.makeInboxAPI()
                 )
             )
         }
@@ -140,6 +147,9 @@ final class SignedInDependencies {
     let files: any FileAPI
     let mediaLoader: MediaLoader
     let unread: UnreadModel
+    let inbox: any InboxAPI
+    let notifications: NotificationCenterModel
+    let invitations: InvitationsModel
     let p2pChats: ChatListModel
     let groupChats: ChatListModel
     let makeChat: @MainActor (ChatRoute) -> ChatModel
@@ -153,6 +163,9 @@ final class SignedInDependencies {
         files: any FileAPI,
         mediaLoader: MediaLoader,
         unread: UnreadModel,
+        inbox: any InboxAPI,
+        notifications: NotificationCenterModel,
+        invitations: InvitationsModel,
         p2pChats: ChatListModel,
         groupChats: ChatListModel,
         makeChat: @escaping @MainActor (ChatRoute) -> ChatModel
@@ -165,6 +178,9 @@ final class SignedInDependencies {
         self.files = files
         self.mediaLoader = mediaLoader
         self.unread = unread
+        self.inbox = inbox
+        self.notifications = notifications
+        self.invitations = invitations
         self.p2pChats = p2pChats
         self.groupChats = groupChats
         self.makeChat = makeChat
