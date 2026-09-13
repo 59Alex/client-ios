@@ -65,7 +65,6 @@ final class SettingsFlowUITests: XCTestCase {
         field.typeText("@qa_wallpaper_2")
         XCTAssertTrue(app.staticTexts["account.error"].waitForExistence(timeout: 5))
         attachScreenshot("62-account-taken")
-        field.buttons.firstMatch.tap()
         let clear = String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20)
         field.typeText(clear + "@qa_new_login")
         app.buttons["account.save"].tap()
