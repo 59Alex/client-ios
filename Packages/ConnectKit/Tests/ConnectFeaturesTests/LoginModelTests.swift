@@ -120,4 +120,6 @@ private struct FixedUsers: UserRepository {
     let user: User
 
     func currentUser() async throws -> User { user }
+    func addPhoto(userId: String, urlS3: String, name: String, extension: String, isAvatar: Bool) async throws {}
+    func card(userId: String) async throws -> Contact { Contact(userId: userId, name: user.name, username: user.username) }
 }

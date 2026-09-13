@@ -6,8 +6,7 @@ struct ChatListView: View {
     let model: ChatListModel
     let unread: UnreadModel
     let makeChat: @MainActor (ChatRoute) -> ChatModel
-
-    @State private var path: [ChatRoute] = []
+    @Binding var path: [ChatRoute]
 
     private var title: String { model.kind == .p2p ? "Чаты" : "Группы" }
 

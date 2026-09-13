@@ -56,6 +56,39 @@ final class ChatFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testFindAddContactAndOpenChat() throws {
+        let app = launchSignedIn()
+        app.tabBars.buttons["Контакты"].tap()
+
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText("qa_wallpaper_4\n")
+
+        let add = app.buttons["contacts.search.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        attachScreenshot("30-contact-found")
+        add.tap()
+        XCTAssertTrue(app.staticTexts["QA Wallpaper Four"].waitForExistence(timeout: 5))
+        XCTAssertFalse(add.exists)
+
+        let contact = app.buttons["contacts.call.qa_wallpaper_2"]
+        if !contact.waitForExistence(timeout: 3) {
+            app.buttons["Cancel"].firstMatch.tap()
+        }
+        XCTAssertTrue(contact.waitForExistence(timeout: 5))
+        app.staticTexts["QA Wallpaper Two"].press(forDuration: 1.0)
+        let write = app.buttons["Написать"]
+        XCTAssertTrue(write.waitForExistence(timeout: 5))
+        attachScreenshot("31-contact-menu")
+        write.tap()
+
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["Чаты"].isSelected)
+        attachScreenshot("32-chat-from-contact")
+    }
+
+    @MainActor
     private func attachScreenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name

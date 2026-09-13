@@ -74,13 +74,20 @@ public struct HTTPClient: Sendable {
 
     /// Отправляет запрос. Для авторизованного клиента 401 очищает сессию и
     /// превращается в `APIError.unauthorized`; остальные статусы возвращаются как есть.
-    public func send(method: String, path: String, body: Data?, headers: [String: String] = [:]) async throws -> HTTPResponse {
-        var request = URLRequest(url: Self.join(baseURL, path), timeoutInterval: timeout)
+    public func send(
+        method: String,
+        path: String,
+        body: Data?,
+        contentType: String = "application/json",
+        headers: [String: String] = [:],
+        timeout requestTimeout: TimeInterval? = nil
+    ) async throws -> HTTPResponse {
+        var request = URLRequest(url: Self.join(baseURL, path), timeoutInterval: requestTimeout ?? timeout)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
         }
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)

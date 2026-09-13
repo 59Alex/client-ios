@@ -49,6 +49,7 @@ targets:
           - ConnectFeatures
           - ConnectCalls
           - ConnectChat
+          - ConnectFiles
           - ConnectTestSupport
       - package: LiveKit
     settings:

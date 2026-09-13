@@ -3,6 +3,7 @@ import ConnectCalls
 import ConnectChat
 import ConnectCore
 import ConnectFeatures
+import ConnectFiles
 import ConnectNetworking
 import Foundation
 #if DEBUG
@@ -21,6 +22,7 @@ final class AppDependencies {
     private let outboxClient: HTTPClient
     private let statusClient: HTTPClient
     private let notificationClient: HTTPClient
+    private let s3Client: HTTPClient
     private let eventStream: any EventStreamTransport
     private let overrides: Overrides
 
@@ -29,6 +31,8 @@ final class AppDependencies {
         var makeCallModel: (@MainActor (CallParticipant) -> P2PCallModel)?
         var chatAPI: (any ChatAPI)?
         var makeSignalRoom: (@MainActor () -> any SignalRoom)?
+        var fileAPI: (any FileAPI)?
+        var contacts: (any ContactsRepository)?
     }
 
     init(
@@ -48,6 +52,7 @@ final class AppDependencies {
         outboxClient = HTTPClient(baseURL: config.eventsOutboxApiUrl, transport: transport, tokenProvider: auth)
         statusClient = HTTPClient(baseURL: config.statusApiUrl, transport: transport, tokenProvider: auth, timeout: 8)
         notificationClient = HTTPClient(baseURL: config.notificationApiUrl, transport: transport, tokenProvider: auth)
+        s3Client = HTTPClient(baseURL: config.s3ApiUrl, transport: transport, tokenProvider: auth, timeout: 60)
         session = SessionModel(auth: auth, users: RemoteUserRepository(client: mainClient))
     }
 
@@ -67,12 +72,18 @@ final class AppDependencies {
         let unread = UnreadModel(api: chatAPI)
         let makeSignalRoom = overrides.makeSignalRoom ?? { LiveKitCallRoom() }
         let chatUser = ChatUser(userId: user.userId, username: user.username)
+        let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client)
+        let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("connect-media", isDirectory: true)
         let rtcUrl = config.rtcWebSocketUrl
         return SignedInDependencies(
             user: user,
             status: status,
-            contacts: ContactsModel(userId: user.userId, repository: RemoteContactsRepository(client: mainClient)),
+            contacts: ContactsModel(userId: user.userId, repository: overrides.contacts ?? RemoteContactsRepository(client: mainClient)),
             calls: calls,
+            users: RemoteUserRepository(client: mainClient),
+            files: files,
+            mediaLoader: MediaLoader(api: files, cacheDirectory: overrides.fileAPI == nil ? cacheDirectory : nil),
             unread: unread,
             p2pChats: ChatListModel(kind: .p2p, api: chatAPI),
             groupChats: ChatListModel(kind: .group, api: chatAPI),
@@ -85,7 +96,8 @@ final class AppDependencies {
                     api: chatAPI,
                     unread: unread,
                     rtcUrl: rtcUrl,
-                    makeRoom: makeSignalRoom
+                    makeRoom: makeSignalRoom,
+                    files: files
                 )
             }
         )
@@ -102,7 +114,9 @@ final class AppDependencies {
                 overrides: Overrides(
                     makeCallModel: { UITestStub.makeCallModel(me: $0, arguments: arguments) },
                     chatAPI: UITestStub.makeChatAPI(),
-                    makeSignalRoom: { FakeCallRoom() }
+                    makeSignalRoom: { FakeCallRoom() },
+                    fileAPI: UITestStub.makeFileAPI(),
+                    contacts: UITestStub.makeContactsRepository()
                 )
             )
         }
@@ -122,6 +136,9 @@ final class SignedInDependencies {
     let status: StatusService
     let contacts: ContactsModel
     let calls: P2PCallModel
+    let users: any UserRepository
+    let files: any FileAPI
+    let mediaLoader: MediaLoader
     let unread: UnreadModel
     let p2pChats: ChatListModel
     let groupChats: ChatListModel
@@ -132,6 +149,9 @@ final class SignedInDependencies {
         status: StatusService,
         contacts: ContactsModel,
         calls: P2PCallModel,
+        users: any UserRepository,
+        files: any FileAPI,
+        mediaLoader: MediaLoader,
         unread: UnreadModel,
         p2pChats: ChatListModel,
         groupChats: ChatListModel,
@@ -141,6 +161,9 @@ final class SignedInDependencies {
         self.status = status
         self.contacts = contacts
         self.calls = calls
+        self.users = users
+        self.files = files
+        self.mediaLoader = mediaLoader
         self.unread = unread
         self.p2pChats = p2pChats
         self.groupChats = groupChats
