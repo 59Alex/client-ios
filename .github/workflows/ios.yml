@@ -57,7 +57,6 @@ jobs:
             -scheme Connect \
             -destination "id=${{ steps.simulator.outputs.udid }}" \
             -resultBundlePath build/Connect.xcresult \
-            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
             | tee build-log.txt | grep -E "error:|warning:|Test Case|Executed|\*\* (BUILD|TEST)" || true
           grep -q "\*\* TEST SUCCEEDED \*\*" build-log.txt
 

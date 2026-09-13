@@ -1,3 +1,4 @@
+import ConnectCore
 import ConnectFeatures
 import SwiftUI
 
@@ -18,7 +19,7 @@ struct RootView: View {
             case .signedOut:
                 LoginView(auth: dependencies.auth)
             case .signedIn(let user):
-                HomeView(user: user, session: session)
+                SignedInRoot(user: user, dependencies: dependencies)
             case .failed(let message):
                 ContentUnavailableView {
                     Label(message, systemImage: "wifi.exclamationmark")
@@ -31,5 +32,25 @@ struct RootView: View {
             }
         }
         .task { await session.run() }
+    }
+}
+
+/// Держит зависимости вошедшего пользователя, пока он в сессии.
+private struct SignedInRoot: View {
+    let user: User
+    let dependencies: AppDependencies
+    @State private var signedIn: SignedInDependencies?
+
+    var body: some View {
+        Group {
+            if let signedIn, signedIn.user.userId == user.userId {
+                HomeView(dependencies: signedIn, session: dependencies.session)
+            } else {
+                ProgressView().controlSize(.large)
+            }
+        }
+        .task(id: user.userId) {
+            signedIn = dependencies.makeSignedIn(user: user)
+        }
     }
 }

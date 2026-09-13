@@ -46,6 +46,13 @@ public struct AppConfig: Sendable, Equatable {
 }
 
 extension AppConfig {
+    /// Адрес медиасервера OpenVidu 3 (LiveKit) для клиента: `https` меняется на `wss`.
+    public var rtcWebSocketUrl: URL {
+        var components = URLComponents(url: rtcUrl, resolvingAgainstBaseURL: false)
+        components?.scheme = rtcUrl.scheme == "http" ? "ws" : "wss"
+        return components?.url ?? rtcUrl
+    }
+
     public static let test = AppConfig(
         profile: "test",
         uiOrigin: url("https://cnnect.ru"),
@@ -58,7 +65,7 @@ extension AppConfig {
         eventsApiUrl: url("https://events-channel-service.cnnect.ru"),
         eventsOutboxApiUrl: url("https://events-channel-outbox.cnnect.ru"),
         keycloakUrl: url("https://auth.cnnect.ru"),
-        rtcUrl: url("https://rtc.cnnect.ru")
+        rtcUrl: url("https://rtc.cnnect.ru/livekit")
     )
 
     private static func url(_ string: String) -> URL {

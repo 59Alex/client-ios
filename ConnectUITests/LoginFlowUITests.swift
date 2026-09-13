@@ -14,7 +14,7 @@ final class LoginFlowUITests: XCTestCase {
     }
 
     @MainActor
-    func testLoginShowsProfileAndLogoutReturnsToLogin() throws {
+    func testLoginOpensHome() throws {
         let app = makeApp()
         app.launch()
         let username = app.textFields["login.username"]
@@ -29,10 +29,18 @@ final class LoginFlowUITests: XCTestCase {
         password.typeText("password")
         app.buttons["login.submit"].tap()
 
+        XCTAssertTrue(app.tabBars.buttons["Профиль"].waitForExistence(timeout: 10))
+        attachScreenshot("02-home-chats")
+    }
+
+    @MainActor
+    func testProfileAndLogoutReturnsToLogin() throws {
+        let app = makeApp()
+        app.launchArguments.append("-ui-test-signed-in")
+        app.launch()
+
         let profileTab = app.tabBars.buttons["Профиль"]
         XCTAssertTrue(profileTab.waitForExistence(timeout: 10))
-        attachScreenshot("02-home-chats")
-
         profileTab.tap()
         XCTAssertTrue(app.staticTexts["profile.name"].waitForExistence(timeout: 5))
         attachScreenshot("03-profile")

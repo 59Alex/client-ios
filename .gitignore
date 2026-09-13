@@ -67,3 +67,4 @@ build/
 build-log.txt
 Packages/ConnectKit/.build/
 Packages/ConnectKit/Package.resolved
+App/Info.plist
