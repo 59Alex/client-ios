@@ -1,6 +1,7 @@
 import ConnectChat
 import ConnectFiles
 import PhotosUI
+import QuickLook
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
