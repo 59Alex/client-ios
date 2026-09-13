@@ -13,7 +13,7 @@
 | Токены в Keychain, refresh | `src/api/auth/*` | ✅ |
 | SSE-клиент (токен в query и в заголовке) | `src/createSSE.ts`, `status_api.ts` | 🟡 query; POST с заголовком — ⬜ |
 | Сессия устройства: login, пульс | `status_api.ts`, `clientSession.ts` | 🟡 без heartbeat-SSE и ack, без unlogin при уходе в фон |
-| Идентификатор устройства (для настроек по устройству) | `internal/deviceIdentity.ts` | ⬜ |
+| Идентификатор устройства (для настроек по устройству) | `internal/deviceIdentity.ts` | ✅ |
 | Панель ошибок подключения (медиасервер, VPN, микрофон) | `features/errors/*` | ⬜ |
 | Восстановление навигации | `features/navigation/lastLocation.ts` | ⬜ |
 
@@ -22,10 +22,10 @@
 | Функция | Веб | Статус |
 | --- | --- | --- |
 | Вход, подтверждение email | `features/auth/AuthGate.tsx` | ✅ |
-| Регистрация (имя, логин, email, телефон, сила пароля) | там же, `POST /api/user/register-profile` | ⬜ |
+| Регистрация (имя, логин, email, телефон, сила пароля) | там же, `POST /api/user/register-profile` | ✅ с подтверждением email и повторной отправкой кода |
 | Профиль: карточка, аватар и галерея фото (S3 `user-gallery`) | `SettingsProfileSection.tsx`, `UserProfileImages.tsx` | ✅ смена аватара и просмотр галереи |
-| Приветственный стикер | `features/greeting/*` | ⬜ |
-| Аккаунт: имя, логин, email, телефон со статусами заявки | `AccountSettingsSection.tsx`, SETTINGS `/api/account/*` | ⬜ |
+| Приветственный стикер | `features/greeting/*` | ✅ настройка и отправка в пустом личном чате |
+| Аккаунт: имя, логин, email, телефон со статусами заявки | `AccountSettingsSection.tsx`, SETTINGS `/api/account/*` | ✅ |
 | Профиль другого пользователя | `OtherUserProfileInfo.tsx` | ✅ |
 | Список контактов, присутствие, «был(а)» | `ContactList.tsx`, `presence.ts` | 🟡 без живого потока статусов и сортировки по имени |
 | Поиск по логину и телефону, добавление, удаление, «Написать» | `contactSearch.ts`, `ContactActions.tsx` | ✅ |
@@ -93,8 +93,8 @@
 | Функция | Веб | Статус |
 | --- | --- | --- |
 | Оформление: 6 тем, фоны, свои цвета, уменьшение анимации, синхронизация по устройству | `features/appearance/*` | 🟡 только палитра light/dark |
-| Звуки уведомлений (на вебе флаги хранятся, звуков нет) | `NotificationSoundSection.tsx` | ⬜ |
-| Настройки голоса и видео по устройству | `VoiceAndSoundSection.tsx` | ⬜ |
+| Звуки уведомлений (на вебе флаги хранятся, звуков нет) | `NotificationSoundSection.tsx` | ✅ настройки |
+| Настройки голоса и видео по устройству | `VoiceAndSoundSection.tsx` | 🟡 громкость, чувствительность, шумоподавление, эхо; применение к звонку — ⬜ |
 | Гостевые встречи и ссылки `/share/meet/…` | `features/meetings/*` | ⬜ Universal Links |
 
 Отладочный и мёртвый код веба (`DebugNotification.tsx`, `ChatPanel.tsx`, `ChatInfoModal.tsx`,

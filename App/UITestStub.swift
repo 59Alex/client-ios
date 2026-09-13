@@ -50,6 +50,12 @@ enum UITestStub {
 
         transport.on("/api/auth/refresh") { _ in json(200, tokenResponse()) }
 
+        transport.on("/api/user/register-profile") { request in
+            decode(request.httpBody)["username"] == "@taken"
+                ? json(409, #"{"errMessage":"Пользователь с таким логином уже существует"}"#)
+                : json(200, #"{"code":211,"message":"Код верификации отправлен на почту."}"#)
+        }
+
         transport.on("/api/user-card/get-by-jwt") { _ in
             json(200, #"{"userId":"qa-1","phoneNumber":null,"name":"QA Wallpaper","email":"qa@example.com","username":"@qa_wallpaper_1","status":"ONLINE","contacts":[]}"#)
         }
@@ -168,6 +174,7 @@ enum UITestStub {
         FakeFileAPI(files: [
             "user-gallery/qa-4/avatar.png": solidImage(color: .systemTeal),
             "file-chat/room-qa-2/photo.png": solidImage(color: .systemOrange),
+            "user-gallery/qa-3/greeting.png": solidImage(color: .systemPink),
         ])
     }
 

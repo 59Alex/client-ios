@@ -1,5 +1,6 @@
 import ConnectChat
 import ConnectFiles
+import ConnectSettings
 import PhotosUI
 import QuickLook
 import SwiftUI
@@ -37,7 +38,12 @@ struct ChatScreen: View {
                         .frame(maxWidth: 240)
                 }
             case .loaded:
-                messageList
+                if model.kind == .p2p, model.messages.isEmpty, let partner = model.partnerUserId {
+                    GreetingPrompt(partnerUserId: partner, model: model)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    messageList
+                }
             }
             inputBar
         }
@@ -252,6 +258,79 @@ extension ChatScreen {
         Task {
             previewURL = await mediaLoader.fileURL(for: attachment.urlS3, filename: attachment.displayName)
         }
+    }
+}
+
+extension EnvironmentValues {
+    /// Приветственный стикер пользователя по его id.
+    @Entry var greetingLookup: (@Sendable (String) async -> GreetingSticker?)?
+}
+
+/// Пустой личный чат: стикер собеседника (или встроенный), отправляется одним нажатием.
+private struct GreetingPrompt: View {
+    let partnerUserId: String
+    let model: ChatModel
+
+    @Environment(\.greetingLookup) private var greetingLookup
+    @Environment(\.mediaLoader) private var mediaLoader
+    @State private var sticker: GreetingSticker?
+    @State private var isSending = false
+    @State private var failed = false
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Начните с приветствия")
+                .font(.headline)
+                .foregroundStyle(Palette.textPrimary)
+            Button {
+                Task { await send() }
+            } label: {
+                RemoteImage(key: sticker?.urlS3, contentMode: .fit) {
+                    Self.builtInSticker
+                }
+                .frame(width: 160, height: 160)
+            }
+            .buttonStyle(.plain)
+            .disabled(isSending)
+            .accessibilityLabel("Отправить приветствие")
+            .accessibilityIdentifier("chat.greeting")
+            Text(isSending ? "Отправляем…" : (failed ? "Не удалось отправить. Попробуйте ещё раз." : "Нажмите на стикер, чтобы поздороваться"))
+                .font(.subheadline)
+                .foregroundStyle(failed ? Palette.danger : Palette.textSecondary)
+        }
+        .padding()
+        .task(id: partnerUserId) {
+            sticker = await greetingLookup?(partnerUserId)
+        }
+    }
+
+    private static var builtInSticker: some View {
+        Image(systemName: "hand.wave.fill")
+            .font(.system(size: 96))
+            .foregroundStyle(Palette.accent)
+            .frame(width: 160, height: 160)
+    }
+
+    private func send() async {
+        isSending = true
+        failed = false
+        defer { isSending = false }
+        var data: Data?
+        var ext = ".png"
+        if let sticker, let loaded = await mediaLoader?.data(for: sticker.urlS3) {
+            data = loaded
+            ext = sticker.extension.isEmpty ? ".png" : sticker.extension
+        } else {
+            let renderer = ImageRenderer(content: Self.builtInSticker.background(Color.clear))
+            renderer.scale = 3
+            data = renderer.uiImage?.pngData()
+        }
+        guard let data else {
+            failed = true
+            return
+        }
+        let mime = UTType(filenameExtension: String(ext.dropFirst()))?.preferredMIMEType ?? "image/png"
+        failed = !(await model.sendGreeting(data: data, filename: "Приветствие\(ext)", mimeType: mime))
     }
 }
 

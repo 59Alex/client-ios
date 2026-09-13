@@ -103,6 +103,20 @@ public actor AuthService: AccessTokenProvider {
         return true
     }
 
+    /// Регистрация профиля. `true` — сервис отправил код подтверждения на почту (код 211).
+    public func register(_ profile: NewProfile) async throws -> Bool {
+        let response = try await client.post("/api/user/register-profile", json: profile)
+        let body = try? JSONDecoder().decode(APIErrorBody.self, from: response.body)
+        let code = body?.code ?? response.statusCode
+        if code == 211 || response.statusCode == 211 {
+            return true
+        }
+        guard response.isSuccess else {
+            throw AuthError.rejected(message: body?.displayMessage)
+        }
+        return false
+    }
+
     public func logout() {
         clearTokens(notify: true)
     }
@@ -219,4 +233,21 @@ private struct EmailVerification: Encodable, Sendable {
 
 private struct RefreshRequest: Encodable, Sendable {
     let refreshToken: String
+}
+
+/// Тело `POST /api/user/register-profile`.
+public struct NewProfile: Encodable, Sendable, Equatable {
+    public var username: String
+    public var password: String
+    public var email: String
+    public var name: String
+    public var phoneNumber: String?
+
+    public init(username: String, password: String, email: String, name: String, phoneNumber: String?) {
+        self.username = username
+        self.password = password
+        self.email = email
+        self.name = name
+        self.phoneNumber = phoneNumber
+    }
 }

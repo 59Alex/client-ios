@@ -459,11 +459,11 @@ public struct ChatSnapshot: Decodable, Sendable, Equatable {
             ?? MessagePage(content: [], number: 0, last: true, totalElements: 0)
     }
 
-    public init(id: String, name: String? = nil, messages: MessagePage) {
+    public init(id: String, name: String? = nil, partnerUserId: String? = nil, messages: MessagePage) {
         self.id = id
         self.name = name
         username = nil
-        partnerUserId = nil
+        self.partnerUserId = partnerUserId
         partnerBanned = false
         banned = false
         role = nil

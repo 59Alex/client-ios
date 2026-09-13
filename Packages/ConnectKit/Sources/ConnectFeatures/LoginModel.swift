@@ -53,6 +53,35 @@ public final class LoginModel {
         }
     }
 
+    /// Переход к подтверждению email после регистрации: логин и пароль уже известны.
+    public func startVerification(username: String, password: String, message: String?) {
+        self.username = username
+        self.password = password
+        verificationCode = ""
+        errorMessage = nil
+        infoMessage = message ?? "Подтвердите email кодом из письма"
+        step = .emailVerification
+    }
+
+    /// Повторная отправка кода: веб-клиент для этого заново вызывает вход.
+    public func resendCode() async {
+        await perform {
+            try await self.auth.login(username: self.normalizedUsername, password: self.password)
+        }
+        if step == .emailVerification, errorMessage == nil {
+            infoMessage = "Новый код отправлен на почту."
+        }
+    }
+
+    /// Логин после регистрации без подтверждения.
+    public func prefill(username: String, message: String) {
+        self.username = username
+        password = ""
+        step = .credentials
+        infoMessage = message
+        errorMessage = nil
+    }
+
     public func backToCredentials() {
         step = .credentials
         verificationCode = ""
