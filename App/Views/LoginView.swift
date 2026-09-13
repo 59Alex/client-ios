@@ -1,4 +1,5 @@
 import ConnectAuth
+import ConnectCore
 import ConnectFeatures
 import SwiftUI
 
