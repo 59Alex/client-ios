@@ -1,4 +1,5 @@
 import ConnectCalls
+import ConnectChat
 import ConnectCore
 import ConnectFeatures
 import SwiftUI
@@ -13,8 +14,12 @@ struct HomeView: View {
     var body: some View {
         ZStack {
             TabView {
-                PlaceholderScreen(title: "Чаты", systemImage: "bubble.left.and.bubble.right", description: "Личные и групповые чаты появятся на следующем этапе")
+                ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat)
                     .tabItem { Label("Чаты", systemImage: "bubble.left.and.bubble.right") }
+                    .badge(dependencies.unread.unreadCount(kind: .p2p))
+                ChatListView(model: dependencies.groupChats, unread: dependencies.unread, makeChat: dependencies.makeChat)
+                    .tabItem { Label("Группы", systemImage: "person.3") }
+                    .badge(dependencies.unread.unreadCount(kind: .group))
                 ContactsView(model: dependencies.contacts, calls: calls)
                     .tabItem { Label("Контакты", systemImage: "person.2") }
                 ProfileView(user: dependencies.user, session: session, onLogout: logout)
@@ -32,27 +37,13 @@ struct HomeView: View {
         .animation(.easeInOut(duration: 0.2), value: calls.isInCall)
         .task { await dependencies.status.keepAlive(userId: dependencies.user.userId) }
         .task { await calls.runIncomingCalls() }
+        .task { await dependencies.unread.run() }
     }
 
     private func logout() async {
         await calls.hangUp()
         await dependencies.status.logout(userId: dependencies.user.userId)
         await session.logout()
-    }
-}
-
-private struct PlaceholderScreen: View {
-    let title: String
-    let systemImage: String
-    let description: String
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView(title, systemImage: systemImage, description: Text(description))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Palette.canvas)
-                .navigationTitle(title)
-        }
     }
 }
 

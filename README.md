@@ -21,6 +21,7 @@ App/                      приложение SwiftUI: сборка завис�
   DesignSystem/           палитра (light/dark из Theme.ts веб-клиента), стили кнопок и полей
   Calls/                  LiveKitCallRoom (LiveKit Swift SDK), доступ к микрофону
   Views/                  RootView, LoginView, HomeView, ContactsView, CallView
+  Views/Chats/            списки чатов и групп, экран переписки
   UITestStub.swift        офлайн-ответы сервисов для XCUITest (только DEBUG)
   Resources/Assets.xcassets
 ConnectUITests/           XCUITest-сценарии со скриншотами
@@ -30,6 +31,7 @@ Packages/ConnectKit/      SPM-пакет без UIKit/SwiftUI, собирает�
   ConnectAuth             вход, подтверждение email, refresh, хранение токенов
   ConnectFeatures         модели экранов (LoginModel, SessionModel, ContactsModel), сессия статуса
   ConnectCalls            личные звонки: протокол комнаты, API, P2PCallModel
+  ConnectChat             чаты: модели сообщений, API, сигналы chat, ChatListModel, ChatModel, UnreadModel
   ConnectTestSupport      StubTransport, тестовые JWT, FakeCallRoom и FakeP2PCallAPI
 scripts/pick-simulator.sh выбор симулятора в CI
 ```
@@ -51,6 +53,8 @@ scripts/pick-simulator.sh выбор симулятора в CI
 | `P2PCallModel` | `src/calls/p2p/useP2pCall.ts` |
 | `RemoteP2PCallAPI` | `src/api/connectchannelservice/p2p_call_api.ts`, `src/api/connectmainservice/p2p_room_api.ts` |
 | `TrackName`, `CallClientData`, `SignalPacket`, `RemoteStreamTracker` | `src/calls/rtc/openvidu.ts` |
+| `ChatListModel`, `ChatModel`, `MessageTimeline`, `ChatSignal` | `src/components/sidebar/HomeRoomList.tsx`, `src/components/main/Chat.tsx`, `src/components/inner/TextSessionHolder.tsx` |
+| `UnreadModel` | `src/features/notifications/useNotifications.tsx`, `seenBatch.ts` |
 | `Palette`, `Radius` | `src/components/func/Theme.ts` |
 
 ## Сборка и проверка
@@ -95,6 +99,9 @@ CI (`.github/workflows/ios.yml`) на каждом PR запускает тес�
 итога звонка в чате (`__P2P_CALL_SUMMARY__`) и групповых звонков.
 
 ## Этапы переноса
+
+Полная опись функций веб-клиента и статусы — [docs/PORTING_PLAN.md](docs/PORTING_PLAN.md).
+
 
 1. **Каркас** — проект, CI, сеть, авторизация, вход и подтверждение email, профиль, выход.
 2. Чаты: список P2P и групп, сообщения, отправка текста, статусы через SSE.

@@ -18,18 +18,23 @@ public enum CallRoomEvent: Sendable, Equatable {
     case disconnected(networkLoss: Bool)
 }
 
+/// Комната LiveKit только для сигналов: текстовые сессии чатов не публикуют дорожек.
+@MainActor
+public protocol SignalRoom: AnyObject {
+    var events: AsyncStream<CallRoomEvent> { get }
+    func connect(url: URL, token: String) async throws
+    func send(_ packet: Data, topic: String) async throws
+    func disconnect() async
+}
+
 /// Медиакомната личного звонка. Приложение реализует её на LiveKit Swift SDK,
 /// тесты — фейком, поэтому логика звонка не зависит от WebRTC.
 @MainActor
-public protocol CallRoom: AnyObject {
-    var events: AsyncStream<CallRoomEvent> { get }
-    func connect(url: URL, token: String) async throws
+public protocol CallRoom: SignalRoom {
     /// Публикует микрофон одной аудиодорожкой с именем по протоколу Connect.
     func publishMicrophone(trackName: String, muted: Bool) async throws
     func setMicrophoneMuted(_ muted: Bool) async throws
     func setSpeakerOutput(_ enabled: Bool)
-    func send(_ packet: Data, topic: String) async throws
-    func disconnect() async
 }
 
 /// Удалённый «поток» OpenVidu: дорожки участника с одним ключом `k`.

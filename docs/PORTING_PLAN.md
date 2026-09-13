@@ -1,0 +1,101 @@
+# План полного переноса connect-ui на iOS
+
+Источник поведения — `connect-ui` (ветка `dev`). Опись функций составлена по коду веб-клиента
+13.09.2026; статусы обновляются в каждом PR этапа.
+
+Легенда: ✅ перенесено, 🟡 частично, ⬜ не начато, 🖥 нужны изменения на сервере.
+
+## Этап 1. Основа
+
+| Функция | Веб | Статус |
+| --- | --- | --- |
+| Конфигурация сервисов, HTTP-клиент, ошибки | `src/config.ts`, `src/api/*` | ✅ |
+| Токены в Keychain, refresh | `src/api/auth/*` | ✅ |
+| SSE-клиент (токен в query и в заголовке) | `src/createSSE.ts`, `status_api.ts` | 🟡 query; POST с заголовком — ⬜ |
+| Сессия устройства: login, пульс | `status_api.ts`, `clientSession.ts` | 🟡 без heartbeat-SSE и ack, без unlogin при уходе в фон |
+| Идентификатор устройства (для настроек по устройству) | `internal/deviceIdentity.ts` | ⬜ |
+| Панель ошибок подключения (медиасервер, VPN, микрофон) | `features/errors/*` | ⬜ |
+| Восстановление навигации | `features/navigation/lastLocation.ts` | ⬜ |
+
+## Этап 2. Аккаунт и контакты
+
+| Функция | Веб | Статус |
+| --- | --- | --- |
+| Вход, подтверждение email | `features/auth/AuthGate.tsx` | ✅ |
+| Регистрация (имя, логин, email, телефон, сила пароля) | там же, `POST /api/user/register-profile` | ⬜ |
+| Профиль: карточка, аватар и галерея фото (S3 `user-gallery`) | `SettingsProfileSection.tsx`, `UserProfileImages.tsx` | 🟡 только просмотр |
+| Приветственный стикер | `features/greeting/*` | ⬜ |
+| Аккаунт: имя, логин, email, телефон со статусами заявки | `AccountSettingsSection.tsx`, SETTINGS `/api/account/*` | ⬜ |
+| Профиль другого пользователя | `OtherUserProfileInfo.tsx` | ⬜ |
+| Список контактов, присутствие, «был(а)» | `ContactList.tsx`, `presence.ts` | 🟡 без живого потока статусов и сортировки по имени |
+| Поиск по логину и телефону, добавление, удаление | `contactSearch.ts`, `ContactActions.tsx` | ⬜ |
+| Блокировка личного чата | `/api/p2p-room/ban/*` | ⬜ |
+| Синхронизация телефонной книги (CNContactStore) | `contactSync.ts` | ⬜ 🖥 желателен пакетный поиск по телефонам |
+| Аватары из S3 (batch download) | `useS3BatchDownload.ts` | ⬜ |
+
+## Этап 3. Сообщения
+
+| Функция | Веб | Статус |
+| --- | --- | --- |
+| Вкладки «Чаты / Группы / Каналы / Контакты», списки с превью и непрочитанными | `HomeSidebar.tsx`, `HomeRoomList.tsx` | 🟡 без «Каналов» и аватаров |
+| Личный и групповой чат: история, догрузка, отправка с `clientMessageId`, повтор неотправленных | `Chat.tsx`, `MessageList.tsx`, `MessageInput.tsx` | ✅ |
+| Реалтайм чата через текстовую комнату LiveKit (`chat`, `chat:delete`, `chat:edit`) | `TextSessionHolder.tsx` | ✅ |
+| Удаление (одно и выделение), копирование, выделение цветом и жирностью | `ChatMessageMenuModal.tsx`, `/api/chat-message/*` | 🟡 удаление одного, копирование, показ оформления; нет выделения нескольких и создания оформления |
+| Эмодзи | `ChatEmojiPicker.tsx` | ⬜ |
+| Вложения: загрузка с прогрессом (SSE S3), отмена, скачивание, кэш, просмотрщик | `useChatAttachmentUpload.ts`, `MediaViewer.tsx` | ⬜ |
+| Непрочитанные: переход к первому, отметка прочтения, живой поток уведомлений | `useUnreadPosition.ts`, NOTIF `/messages/read` | ✅ |
+| Итоги звонков в чате | `CallSummaryMessage.tsx` | 🟡 показ; отправка после звонка — ⬜ |
+| Центр уведомлений и тосты | `features/notifications/*` | ⬜ |
+| Приглашения: входящие и исходящие, принять, отклонить, отменить | `features/invitations/*` | ⬜ |
+
+## Этап 4. Группы, комнаты, каналы
+
+| Функция | Веб | Статус |
+| --- | --- | --- |
+| Группы: создание, список, чат, приглашение участников | `CreateGroupChatModal.tsx`, `/api/group-room/*` | ⬜ |
+| Баннер активного группового звонка | `ActiveGroupCallJoinButton.tsx` | ⬜ |
+| Комнаты: список, создание, роль, текстовые и голосовые каналы, непрочитанные | `Panel.tsx`, `RoomSidebar.tsx` | ⬜ |
+| Создание канала (админ) | `RoomChannelDialog.tsx` | ⬜ |
+| Приглашение в комнату: ссылка `/invite/…` и из контактов | `RoomInviteModal.tsx`, `roomInvite.ts` | ⬜ Universal Links |
+| Календарь комнаты и напоминания | `features/room-tools/RoomCalendarDialog.tsx` | ⬜ |
+| Каналы-ленты: подписка, посты с вложениями, участники, модераторы, баны, ссылка | `PostFeedView.tsx`, `/api/post-feed/*` | ⬜ |
+| Модерация групп (на вебе недостижима из UI) | `ObjectMembersModal.tsx` | решить отдельно |
+
+## Этап 5. Медиа
+
+| Функция | Веб | Статус |
+| --- | --- | --- |
+| Голосовые и круглые видеосообщения: запись, пауза, фиксация, воспроизведение | `useChatRecorder.ts`, `VoiceMessage.tsx`, `VideoCircle.tsx` | ⬜ 🖥 проверить перекодирование webm/opus |
+| Прогрессивное видео (fMP4-сегменты) | `useProgressiveVideoSegments.ts` | ⬜ 🖥 HLS или `AVAssetResourceLoaderDelegate` |
+
+## Этап 6. Звонки
+
+| Функция | Веб | Статус |
+| --- | --- | --- |
+| Личный аудиозвонок: исходящий, входящий, mute, громкая связь, переподключение | `useP2pCall.ts` | ✅ LiveKit Swift SDK |
+| Личный звонок: камера, демонстрация экрана, свернуть, «позвонить снова» | там же | ⬜ ReplayKit, PiP |
+| CallKit и входящие в фоне | — | ⬜ 🖥 VoIP push |
+| Групповые звонки: вызов участников, вход в активный, список, речь, камера, экран | `useGroupCall.ts`, `/api/groupcall/*` | ⬜ |
+| Голосовые каналы комнат, стримы, окно стрима | `useRoomVoiceSession.ts`, `/api/roomparticipant/*` | ⬜ |
+| Быстрые настройки звука: устройства, громкость, чувствительность, шумоподавление | `QuickVoiceSettings.tsx`, `useMicrophoneSense.ts` | ⬜ |
+| Правило одного активного звонка (личный / групповой / голосовой канал) | `Connect.tsx` | ⬜ |
+
+## Этап 7. Push и фон
+
+| Функция | Статус |
+| --- | --- |
+| APNs вместо Web Push: хранение токена устройства, отправитель | ⬜ 🖥 connect-notification-service, connect-settings-service |
+| VoIP push для входящих звонков | ⬜ 🖥 events-channel-service |
+| Присутствие при уходе приложения в фон | ⬜ 🖥 connect-status-service |
+
+## Этап 8. Остальное
+
+| Функция | Веб | Статус |
+| --- | --- | --- |
+| Оформление: 6 тем, фоны, свои цвета, уменьшение анимации, синхронизация по устройству | `features/appearance/*` | 🟡 только палитра light/dark |
+| Звуки уведомлений (на вебе флаги хранятся, звуков нет) | `NotificationSoundSection.tsx` | ⬜ |
+| Настройки голоса и видео по устройству | `VoiceAndSoundSection.tsx` | ⬜ |
+| Гостевые встречи и ссылки `/share/meet/…` | `features/meetings/*` | ⬜ Universal Links |
+
+Отладочный и мёртвый код веба (`DebugNotification.tsx`, `ChatPanel.tsx`, `ChatInfoModal.tsx`,
+`VoiceStreamSessionHolder.tsx` и др.) не переносится.

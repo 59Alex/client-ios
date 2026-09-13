@@ -48,6 +48,7 @@ targets:
           - ConnectAuth
           - ConnectFeatures
           - ConnectCalls
+          - ConnectChat
           - ConnectTestSupport
       - package: LiveKit
     settings:

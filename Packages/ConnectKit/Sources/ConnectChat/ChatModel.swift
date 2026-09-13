@@ -1,0 +1,286 @@
+import ConnectCalls
+import Foundation
+import Observation
+
+public struct ChatUser: Sendable, Equatable {
+    public var userId: String
+    public var username: String
+
+    public init(userId: String, username: String) {
+        self.userId = userId
+        self.username = username
+    }
+}
+
+/// Открытый чат: снимок, догрузка истории, отправка, удаление и реалтайм через текстовую
+/// комнату LiveKit (`Chat.tsx`, `TextSessionHolder.tsx`).
+@MainActor
+@Observable
+public final class ChatModel {
+    public enum State: Equatable {
+        case loading
+        case loaded
+        case failed(String)
+    }
+
+    /// Пауза перед переподключением текстовой сессии, как у веб-клиента.
+    public static let reconnectDelay: Duration = .seconds(5)
+
+    public let kind: ChatKind
+    public let roomId: String
+    public private(set) var title: String
+    public private(set) var state: State = .loading
+    public private(set) var timeline = MessageTimeline()
+    public private(set) var hasMore = false
+    public private(set) var isLoadingMore = false
+    public private(set) var isConnected = false
+    public private(set) var isPartnerBanned = false
+    /// Граница «Новые сообщения», зафиксированная при открытии.
+    public private(set) var firstUnreadMessageId: String?
+    public var draft = ""
+
+    private let me: ChatUser
+    private let api: any ChatAPI
+    private let unread: UnreadModel?
+    private let rtcUrl: URL
+    private let makeRoom: @MainActor () -> any SignalRoom
+    private let now: @Sendable () -> Date
+    private let sleep: @Sendable (Duration) async throws -> Void
+    private var nextPage = 1
+    private var room: (any SignalRoom)?
+
+    public init(
+        kind: ChatKind,
+        roomId: String,
+        title: String,
+        me: ChatUser,
+        api: any ChatAPI,
+        unread: UnreadModel?,
+        rtcUrl: URL,
+        makeRoom: @escaping @MainActor () -> any SignalRoom,
+        now: @escaping @Sendable () -> Date = Date.init,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
+        self.kind = kind
+        self.roomId = roomId
+        self.title = title
+        self.me = me
+        self.api = api
+        self.unread = unread
+        self.rtcUrl = rtcUrl
+        self.makeRoom = makeRoom
+        self.now = now
+        self.sleep = sleep
+    }
+
+    public var messages: [ChatMessage] { timeline.messages }
+
+    public var canSend: Bool {
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPartnerBanned
+    }
+
+    public func isOwn(_ message: ChatMessage) -> Bool {
+        message.isOwn(username: me.username)
+    }
+
+    // MARK: - Загрузка
+
+    public func load() async {
+        if firstUnreadMessageId == nil {
+            firstUnreadMessageId = unread?.firstUnreadMessageId(kind: kind, roomId: roomId)
+        }
+        do {
+            try await resync()
+            state = .loaded
+            await loadUntilFirstUnread()
+        } catch is CancellationError {
+            return
+        } catch {
+            if state != .loaded {
+                state = .failed("Не удалось загрузить сообщения")
+            }
+        }
+    }
+
+    public func loadMore() async {
+        guard hasMore, !isLoadingMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let page = try await api.history(kind, roomId: roomId, page: nextPage)
+            timeline.merge(page.content)
+            hasMore = page.hasMore
+            nextPage = page.number + 1
+        } catch {
+            // Повтор при следующей прокрутке к началу.
+        }
+    }
+
+    private func resync() async throws {
+        let snapshot = try await api.snapshot(kind, roomId: roomId)
+        timeline.merge(snapshot.messages.content)
+        if nextPage <= 1 {
+            hasMore = snapshot.messages.hasMore
+            nextPage = snapshot.messages.number + 1
+        }
+        isPartnerBanned = snapshot.partnerBanned || snapshot.banned
+        if let name = snapshot.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+            title = name
+        }
+    }
+
+    /// Граница непрочитанного может быть глубже первой страницы: догружаем до неё.
+    private func loadUntilFirstUnread() async {
+        guard let target = firstUnreadMessageId else { return }
+        var attempts = 0
+        while !messages.contains(where: { $0.id == target }) {
+            guard hasMore, attempts < 20 else {
+                firstUnreadMessageId = nil
+                return
+            }
+            attempts += 1
+            await loadMore()
+        }
+    }
+
+    // MARK: - Текстовая сессия
+
+    /// Держит текстовую сессию, пока задача не отменена; после переподключения перечитывает снимок.
+    public func runRealtime() async {
+        while !Task.isCancelled {
+            let room = makeRoom()
+            self.room = room
+            do {
+                let token = try await api.textToken(kind, userId: me.userId, roomId: roomId)
+                try await room.connect(url: rtcUrl, token: token)
+                isConnected = true
+                try? await resync()
+                for await event in room.events {
+                    await handle(event)
+                    if case .disconnected = event { break }
+                }
+            } catch {
+                // Переподключение ниже.
+            }
+            isConnected = false
+            self.room = nil
+            await room.disconnect()
+            do {
+                try await sleep(Self.reconnectDelay)
+            } catch {
+                return
+            }
+        }
+    }
+
+    public func stopRealtime() async {
+        let room = room
+        self.room = nil
+        isConnected = false
+        await room?.disconnect()
+    }
+
+    private var clientData: String {
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(["clientData": me.username]) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func handle(_ event: CallRoomEvent) async {
+        switch event {
+        case let .data(topic, payload):
+            guard topic == CallProtocol.signalTopic, let packet = SignalPacket.decode(payload), let signal = ChatSignal(packet: packet) else { return }
+            switch signal {
+            case let .message(message):
+                timeline.merge([message])
+            case let .delete(messageId):
+                timeline.remove(id: messageId)
+            case let .edit(messageId, diapason):
+                timeline.apply(diapason, to: messageId)
+            }
+        case .reconnected:
+            isConnected = true
+            try? await resync()
+        case .reconnecting:
+            isConnected = false
+        default:
+            break
+        }
+    }
+
+    private func signal(_ signal: ChatSignal) async {
+        guard let room, isConnected else { return }
+        try? await room.send(signal.packet(client: clientData).encoded(), topic: CallProtocol.signalTopic)
+    }
+
+    // MARK: - Действия
+
+    public func send() async {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isPartnerBanned else { return }
+        draft = ""
+        let timestamp = Int64(now().timeIntervalSince1970 * 1000)
+        let localId = "local-\(kind == .p2p ? "p2p" : "group")-\(timestamp)-\(me.userId)"
+        let message = ChatMessage(
+            id: localId,
+            clientMessageId: localId,
+            text: text,
+            createdAtMilliseconds: timestamp,
+            authorId: me.userId,
+            username: me.username,
+            delivery: .sending
+        )
+        timeline.merge([message])
+        await deliver(message)
+    }
+
+    public func retry(_ messageId: String) async {
+        guard let message = messages.first(where: { $0.id == messageId }), message.delivery == .failed else { return }
+        timeline.update(id: messageId) { $0.delivery = .sending }
+        var pending = message
+        pending.delivery = .sending
+        await deliver(pending)
+    }
+
+    public func discardFailed(_ messageId: String) {
+        guard messages.first(where: { $0.id == messageId })?.delivery == .failed else { return }
+        timeline.remove(id: messageId)
+    }
+
+    private func deliver(_ message: ChatMessage) async {
+        let outgoing = OutgoingMessage(
+            userId: me.userId,
+            roomId: roomId,
+            message: message.text,
+            dateTimeCreateTimestamp: message.createdAtMilliseconds,
+            attachedFiles: message.attachments
+        )
+        do {
+            let createdId = try await api.send(kind, message: outgoing)
+            var persisted = message
+            persisted.id = createdId
+            persisted.delivery = .sent
+            timeline.merge([persisted])
+            await signal(.message(persisted))
+        } catch {
+            timeline.update(id: message.id) { $0.delivery = .failed }
+        }
+    }
+
+    public func delete(_ messageId: String) async -> Bool {
+        do {
+            try await api.delete(messageId: messageId)
+            timeline.remove(id: messageId)
+            await signal(.delete(messageId: messageId))
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Сообщения собеседников, показанные на экране, отмечаются прочитанными.
+    public func markVisible(_ messageIds: [String]) {
+        let others = messages.filter { messageIds.contains($0.id) && !isOwn($0) && $0.callSummary == nil }.map(\.id)
+        unread?.markRead(others)
+    }
+}

@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "ConnectAuth", targets: ["ConnectAuth"]),
         .library(name: "ConnectFeatures", targets: ["ConnectFeatures"]),
         .library(name: "ConnectCalls", targets: ["ConnectCalls"]),
+        .library(name: "ConnectChat", targets: ["ConnectChat"]),
         .library(name: "ConnectTestSupport", targets: ["ConnectTestSupport"]),
     ],
     targets: [
@@ -18,10 +19,12 @@ let package = Package(
         .target(name: "ConnectAuth", dependencies: ["ConnectCore", "ConnectNetworking"]),
         .target(name: "ConnectFeatures", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectAuth"]),
         .target(name: "ConnectCalls", dependencies: ["ConnectCore", "ConnectNetworking"]),
-        .target(name: "ConnectTestSupport", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls"]),
+        .target(name: "ConnectChat", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls"]),
+        .target(name: "ConnectTestSupport", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls", "ConnectChat"]),
         .testTarget(name: "ConnectNetworkingTests", dependencies: ["ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectAuthTests", dependencies: ["ConnectAuth", "ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectFeaturesTests", dependencies: ["ConnectFeatures", "ConnectAuth", "ConnectNetworking", "ConnectTestSupport"]),
+        .testTarget(name: "ConnectChatTests", dependencies: ["ConnectChat", "ConnectCalls", "ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectCallsTests", dependencies: ["ConnectCalls", "ConnectCore", "ConnectNetworking", "ConnectTestSupport"]),
     ]
 )

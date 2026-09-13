@@ -1,6 +1,7 @@
 #if DEBUG
 import ConnectAuth
 import ConnectCalls
+import ConnectChat
 import ConnectCore
 import ConnectNetworking
 import ConnectTestSupport
@@ -88,6 +89,34 @@ enum UITestStub {
             Task { await api.setPendingIncoming(.call(callId: "incoming-1", callerUserId: "qa-2", calleeUserId: me.userId)) }
         }
         return model
+    }
+
+    /// Чаты стаба: личный с непрочитанным, группа и пустой чат.
+    static func makeChatAPI() -> FakeChatAPI {
+        let base = Int64(Date().timeIntervalSince1970 * 1000)
+        let partner = "qa_wallpaper_2"
+        let messages = [
+            ChatMessage(id: "00000000-0000-4000-8000-000000000001", text: "Привет! Созвонимся?", createdAtMilliseconds: base - 26 * 3_600_000, authorId: "qa-2", username: partner),
+            ChatMessage(id: "00000000-0000-4000-8000-000000000002", text: "__P2P_CALL_SUMMARY__:125|\(base - 25 * 3_600_000)", createdAtMilliseconds: base - 25 * 3_600_000, authorId: "qa-1", username: "@qa_wallpaper_1"),
+            ChatMessage(id: "00000000-0000-4000-8000-000000000003", text: "Отлично поговорили", createdAtMilliseconds: base - 600_000, authorId: "qa-1", username: "@qa_wallpaper_1", weights: [WeightRange(id: "w1", from: 0, to: 6, state: .bold)]),
+            ChatMessage(id: "00000000-0000-4000-8000-000000000004", text: "Да, скинул файл", createdAtMilliseconds: base - 300_000, authorId: "qa-2", username: partner, attachments: [ChatAttachment(urlS3: "chat/plan.pdf", name: "План", extension: ".pdf")], markers: [MarkerRange(id: "m1", from: 12, to: 15, color: "#ffe066")]),
+        ]
+        return FakeChatAPI(
+            ownerUsername: "@qa_wallpaper_1",
+            rooms: [
+                .p2p: [
+                    ChatSummary(kind: .p2p, roomId: "room-qa-2", title: "QA Wallpaper Two", partnerUserId: "qa-2", partnerUsername: partner, preview: ChatPreview(text: "Да, скинул файл", createdAtMilliseconds: base - 300_000)),
+                    ChatSummary(kind: .p2p, roomId: "room-qa-3", title: "QA Wallpaper Three", partnerUserId: "qa-3"),
+                ],
+                .group: [
+                    ChatSummary(kind: .group, roomId: "group-1", title: "QA Group", preview: ChatPreview(text: nil, createdAtMilliseconds: base - 7_200_000, fileInfos: [.init(fileType: "IMAGE", count: 2)])),
+                ],
+            ],
+            messages: ["room-qa-2": messages, "room-qa-3": [], "group-1": []],
+            summary: NotificationSummary(unread: 1, chats: [
+                UnreadChat(chatId: "room-qa-2", chatType: "P2P", unread: 1, firstUnreadMessageId: "00000000-0000-4000-8000-000000000004"),
+            ])
+        )
     }
 
     /// SSE без событий: реальный поток в стабе не нужен, звонки идут через FakeP2PCallAPI.
