@@ -259,8 +259,9 @@ struct GreetingSettingsView: View {
                     .accessibilityLabel("Приветственный стикер")
                     Spacer()
                 }
+                let pickTitle = model.isSaving ? "Сохраняем…" : "Выбрать стикер"
                 PhotosPicker(selection: $item, matching: .images) {
-                    Label(model.isSaving ? "Сохраняем…" : "Выбрать стикер", systemImage: "photo")
+                    Label(pickTitle, systemImage: "photo")
                 }
                 .disabled(model.isSaving)
                 .accessibilityIdentifier("greeting.pick")
