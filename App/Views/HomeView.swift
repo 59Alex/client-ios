@@ -4,6 +4,7 @@ import ConnectCore
 import ConnectFeatures
 import ConnectFiles
 import ConnectInbox
+import ConnectRooms
 import PhotosUI
 import SwiftUI
 
@@ -16,6 +17,7 @@ struct HomeView: View {
     @State private var navigation = AppNavigation()
     @State private var isInboxShown = false
     @State private var isCreateGroupShown = false
+    @State private var isProfileShown = false
 
     private var inboxBadge: Int {
         dependencies.unread.summary.unread + dependencies.invitations.pendingCount
@@ -38,7 +40,7 @@ struct HomeView: View {
     var body: some View {
         ZStack {
             TabView(selection: $navigation.tab) {
-                ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.chatsPath, inboxBadge: inboxBadge, onOpenInbox: { isInboxShown = true }, groupTools: groupTools)
+                ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.chatsPath, inboxBadge: inboxBadge, onOpenInbox: { isInboxShown = true }, onOpenProfile: { isProfileShown = true }, groupTools: groupTools)
                     .tabItem { Label("Чаты", systemImage: "bubble.left.and.bubble.right") }
                     .badge(dependencies.unread.unreadCount(kind: .p2p))
                     .tag(AppNavigation.Tab.chats)
@@ -46,14 +48,30 @@ struct HomeView: View {
                     .tabItem { Label("Группы", systemImage: "person.3") }
                     .badge(dependencies.unread.unreadCount(kind: .group))
                     .tag(AppNavigation.Tab.groups)
+                RoomsListView(
+                    model: dependencies.rooms,
+                    unread: dependencies.unread,
+                    makeRoom: dependencies.makeRoom,
+                    makeCalendar: dependencies.makeCalendar,
+                    makeChat: dependencies.makeChat,
+                    groupTools: groupTools,
+                    inviteToRoom: { roomId, contact in
+                        (try? await dependencies.inbox.invite(kind: .room, targetId: roomId, recipientUserId: contact.userId)) != nil
+                    },
+                    origin: dependencies.uiOrigin,
+                    path: $navigation.roomsPath
+                )
+                    .tabItem { Label("Комнаты", systemImage: "square.grid.2x2") }
+                    .badge(dependencies.unread.unreadCount(kind: .channel))
+                    .tag(AppNavigation.Tab.rooms)
+                FeedsListView(model: dependencies.feeds, unread: dependencies.unread, makeFeed: dependencies.makeFeed)
+                    .tabItem { Label("Каналы", systemImage: "megaphone") }
+                    .tag(AppNavigation.Tab.feeds)
                 ContactsView(model: dependencies.contacts, calls: calls, myUsername: dependencies.user.username) { route in
                     navigation.open(route)
                 }
                     .tabItem { Label("Контакты", systemImage: "person.2") }
                     .tag(AppNavigation.Tab.contacts)
-                ProfileView(dependencies: dependencies, session: session, onLogout: logout)
-                    .tabItem { Label("Профиль", systemImage: "person.crop.circle") }
-                    .tag(AppNavigation.Tab.profile)
             }
             .environment(\.mediaLoader, dependencies.mediaLoader)
             .sheet(isPresented: $isInboxShown) {
@@ -62,8 +80,18 @@ struct HomeView: View {
                         if route.kind == .group { await dependencies.groupChats.load() }
                         navigation.open(route)
                     }
+                } onOpenRoom: { roomId, name in
+                    Task {
+                        await dependencies.rooms.load()
+                        navigation.tab = .rooms
+                        navigation.roomsPath = [.room(id: roomId, name: name)]
+                    }
                 }
                 .environment(\.mediaLoader, dependencies.mediaLoader)
+            }
+            .sheet(isPresented: $isProfileShown) {
+                ProfileView(dependencies: dependencies, session: session, onLogout: logout)
+                    .environment(\.mediaLoader, dependencies.mediaLoader)
             }
             .sheet(isPresented: $isCreateGroupShown) {
                 CreateGroupSheet(model: CreateGroupModel(me: dependencies.user.userId, api: dependencies.inbox), contacts: groupTools.contacts()) {
@@ -91,11 +119,13 @@ struct HomeView: View {
             await dependencies.invitations.load()
             if dependencies.unread.lastEventKind == "invitation" || dependencies.unread.lastEventKind == "sync" {
                 await dependencies.groupChats.load()
+                await dependencies.rooms.load()
             }
         }
     }
 
     private func logout() async {
+        isProfileShown = false
         await calls.hangUp()
         await dependencies.status.logout(userId: dependencies.user.userId)
         await session.logout()

@@ -5,6 +5,7 @@ import ConnectChat
 import ConnectCore
 import ConnectFeatures
 import ConnectInbox
+import ConnectRooms
 import ConnectNetworking
 import ConnectTestSupport
 import Foundation
@@ -115,7 +116,9 @@ enum UITestStub {
                     ChatSummary(kind: .group, roomId: "group-1", title: "QA Group", preview: ChatPreview(text: nil, createdAtMilliseconds: base - 7_200_000, fileInfos: [.init(fileType: "IMAGE", count: 2)])),
                 ],
             ],
-            messages: ["room-qa-2": messages, "room-qa-3": [], "group-1": []],
+            messages: ["room-qa-2": messages, "room-qa-3": [], "group-1": [], "channel-general": [
+                ChatMessage(id: "00000000-0000-4000-8000-000000000010", text: "Добро пожаловать в комнату", createdAtMilliseconds: base - 3_600_000, authorId: "qa-2", username: partner),
+            ]],
             summary: NotificationSummary(unread: 1, chats: [
                 UnreadChat(chatId: "room-qa-2", chatType: "P2P", unread: 1, firstUnreadMessageId: "00000000-0000-4000-8000-000000000004"),
             ])
@@ -141,6 +144,22 @@ enum UITestStub {
             invitations: [
                 Invitation(id: "inv-1", kind: .group, targetId: "group-1", senderUserId: "qa-2", recipientUserId: "qa-1", senderName: "QA Wallpaper Two", recipientName: "QA Wallpaper", targetName: "QA Group", createdAt: Date().addingTimeInterval(-600)),
             ]
+        )
+    }
+
+    /// Комната с каналами и событием в календаре, канал-лента с постами.
+    static func makeRoomsAPI() -> FakeRoomsAPI {
+        let now = Date()
+        return FakeRoomsAPI(
+            rooms: [RoomDetails(id: "room-1", name: "QA Room", channels: [
+                RoomChannel(id: "channel-general", name: "general", kind: .text),
+                RoomChannel(id: "channel-voice", name: "Голосовой", kind: .voice),
+            ])],
+            roles: ["room-1": .admin],
+            events: ["room-1": [RoomEvent(id: "event-1", title: "Планёрка", description: "Обсуждаем релиз", startsAt: Calendar.current.date(bySettingHour: 23, minute: 30, second: 0, of: now) ?? now)]],
+            feeds: [PostFeedCard(id: "feed-1", name: "QA News", lastPost: "Первый пост", lastPostAtMilliseconds: Int64(now.timeIntervalSince1970 * 1000))],
+            feedRoles: ["feed-1": .admin],
+            posts: ["feed-1": [FeedPost(id: "post-1", text: "Первый пост", createdAtMilliseconds: Int64(now.addingTimeInterval(-3600).timeIntervalSince1970 * 1000), username: "qa_wallpaper_1")]]
         )
     }
 

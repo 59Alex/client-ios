@@ -7,13 +7,15 @@ final class AppNavigation {
     enum Tab: Hashable {
         case chats
         case groups
+        case rooms
+        case feeds
         case contacts
-        case profile
     }
 
     var tab: Tab = .chats
     var chatsPath: [ChatRoute] = []
     var groupsPath: [ChatRoute] = []
+    var roomsPath: [RoomRoute] = []
 
     func open(_ route: ChatRoute) {
         switch route.kind {
@@ -23,6 +25,9 @@ final class AppNavigation {
         case .group:
             tab = .groups
             groupsPath = [route]
+        case .channel:
+            tab = .rooms
+            roomsPath = [.channel(route)]
         }
     }
 }

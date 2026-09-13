@@ -274,7 +274,7 @@ public final class ChatModel {
         draft = ""
         pendingAttachments.removeAll()
         let timestamp = Int64(now().timeIntervalSince1970 * 1000)
-        let localId = "local-\(kind == .p2p ? "p2p" : "group")-\(timestamp)-\(me.userId)"
+        let localId = "local-\(kind.localIdPrefix)-\(timestamp)-\(me.userId)"
         let message = ChatMessage(
             id: localId,
             clientMessageId: localId,

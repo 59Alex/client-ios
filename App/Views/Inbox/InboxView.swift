@@ -13,6 +13,7 @@ struct InboxView: View {
     let notifications: NotificationCenterModel
     let invitations: InvitationsModel
     let onOpenChat: (ChatRoute) -> Void
+    var onOpenRoom: ((_ roomId: String, _ name: String) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var section: Section = .notifications
@@ -146,8 +147,11 @@ struct InboxView: View {
         case .group:
             dismiss()
             onOpenChat(ChatRoute(kind: .group, roomId: chatId, title: "Группа"))
+        case .room:
+            dismiss()
+            onOpenChat(ChatRoute(kind: .channel, roomId: chatId, title: "Канал"))
         default:
-            // Комнаты, каналы и события комнат переносятся следующими этапами.
+            // Каналы-ленты и события календаря открываются из своих разделов.
             break
         }
     }
@@ -157,6 +161,9 @@ struct InboxView: View {
         if accepted.kind == .group, let groupId = accepted.targetId {
             dismiss()
             onOpenChat(ChatRoute(kind: .group, roomId: groupId, title: accepted.targetName))
+        } else if accepted.kind == .room, let roomId = accepted.targetId {
+            dismiss()
+            onOpenRoom?(roomId, accepted.targetName)
         }
     }
 }

@@ -4,6 +4,17 @@ import Foundation
 public enum ChatKind: String, Sendable, Equatable, Hashable, Codable {
     case p2p = "P2P"
     case group = "GROUP"
+    /// Текстовый канал комнаты; в сводке непрочитанного у него тип `ROOM`.
+    case channel = "ROOM"
+
+    /// Префикс оптимистичного id сообщения, как у веб-клиента.
+    var localIdPrefix: String {
+        switch self {
+        case .p2p: "p2p"
+        case .group: "group"
+        case .channel: "channel"
+        }
+    }
 }
 
 /// Вложение сообщения: `FileInfo` веб-клиента. Типа MIME нет — вид определяется по имени и расширению.
