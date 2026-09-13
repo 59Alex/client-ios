@@ -1,4 +1,5 @@
 import ConnectCalls
+import ConnectCore
 import ConnectFiles
 import Foundation
 import Observation
@@ -36,6 +37,7 @@ public final class ChatModel {
     public private(set) var isLoadingMore = false
     public private(set) var isConnected = false
     public private(set) var isPartnerBanned = false
+    public private(set) var members: [Contact] = []
     /// Граница «Новые сообщения», зафиксированная при открытии.
     public private(set) var firstUnreadMessageId: String?
     public var draft = ""
@@ -139,6 +141,7 @@ public final class ChatModel {
             nextPage = snapshot.messages.number + 1
         }
         isPartnerBanned = snapshot.partnerBanned || snapshot.banned
+        members = snapshot.members
         if let name = snapshot.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
             title = name
         }

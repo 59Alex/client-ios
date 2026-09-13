@@ -1,4 +1,5 @@
 import ConnectChat
+import ConnectCore
 import SwiftUI
 
 /// Вкладка «Чаты» или «Группы»: список с превью, временем и непрочитанными.
@@ -7,6 +8,10 @@ struct ChatListView: View {
     let unread: UnreadModel
     let makeChat: @MainActor (ChatRoute) -> ChatModel
     @Binding var path: [ChatRoute]
+    let inboxBadge: Int
+    let onOpenInbox: () -> Void
+    var onCreateGroup: (() -> Void)?
+    var groupTools: GroupTools?
 
     private var title: String { model.kind == .p2p ? "Чаты" : "Группы" }
 
@@ -16,8 +21,26 @@ struct ChatListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Palette.canvas)
                 .navigationTitle(title)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(action: onOpenInbox) {
+                            Image(systemName: inboxBadge > 0 ? "bell.badge" : "bell")
+                        }
+                        .accessibilityLabel(inboxBadge > 0 ? "Уведомления, новых: \(inboxBadge)" : "Уведомления")
+                        .accessibilityIdentifier("inbox.open")
+                    }
+                    if let onCreateGroup {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button(action: onCreateGroup) {
+                                Image(systemName: "plus")
+                            }
+                            .accessibilityLabel("Создать группу")
+                            .accessibilityIdentifier("groups.create")
+                        }
+                    }
+                }
                 .navigationDestination(for: ChatRoute.self) { route in
-                    ChatScreenContainer(route: route, makeChat: makeChat)
+                    ChatScreenContainer(route: route, makeChat: makeChat, groupTools: groupTools)
                 }
         }
         .task { await model.load() }
@@ -72,14 +95,22 @@ struct ChatRoute: Hashable {
 /// Держит модель чата, пока экран в стеке: `navigationDestination` пересоздаёт содержимое.
 private struct ChatScreenContainer: View {
     @State private var model: ChatModel
+    let groupTools: GroupTools?
 
-    init(route: ChatRoute, makeChat: @MainActor (ChatRoute) -> ChatModel) {
+    init(route: ChatRoute, makeChat: @MainActor (ChatRoute) -> ChatModel, groupTools: GroupTools?) {
         _model = State(initialValue: makeChat(route))
+        self.groupTools = groupTools
     }
 
     var body: some View {
-        ChatScreen(model: model)
+        ChatScreen(model: model, groupTools: model.kind == .group ? groupTools : nil)
     }
+}
+
+/// Действия в группе: список контактов для приглашения и отправка приглашения.
+struct GroupTools {
+    let contacts: @MainActor () -> [Contact]
+    let invite: @MainActor (_ groupId: String, _ contact: Contact) async -> Bool
 }
 
 private struct ChatRow: View {

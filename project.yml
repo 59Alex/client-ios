@@ -50,6 +50,7 @@ targets:
           - ConnectCalls
           - ConnectChat
           - ConnectFiles
+          - ConnectInbox
           - ConnectTestSupport
       - package: LiveKit
     settings:

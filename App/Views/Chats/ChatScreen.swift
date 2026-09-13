@@ -9,6 +9,9 @@ import UniformTypeIdentifiers
 /// Открытый чат: лента от старых к новым, разделители дней и непрочитанного, поле ввода.
 struct ChatScreen: View {
     let model: ChatModel
+    var groupTools: GroupTools?
+
+    @State private var isMembersShown = false
 
     @State private var confirmDelete: ChatMessage?
     @State private var photoItems: [PhotosPickerItem] = []
@@ -54,6 +57,22 @@ struct ChatScreen: View {
                     }
                 }
                 .accessibilityElement(children: .combine)
+            }
+            if groupTools != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { isMembersShown = true } label: {
+                        Image(systemName: "person.2")
+                    }
+                    .accessibilityLabel("Участники и приглашения")
+                    .accessibilityIdentifier("chat.members")
+                }
+            }
+        }
+        .sheet(isPresented: $isMembersShown) {
+            if let groupTools {
+                GroupMembersSheet(members: model.members, contacts: groupTools.contacts()) { contact in
+                    await groupTools.invite(model.roomId, contact)
+                }
             }
         }
         .task { await model.load() }
