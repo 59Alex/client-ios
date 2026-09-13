@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "ConnectFeatures", targets: ["ConnectFeatures"]),
         .library(name: "ConnectCalls", targets: ["ConnectCalls"]),
         .library(name: "ConnectChat", targets: ["ConnectChat"]),
+        .library(name: "ConnectFiles", targets: ["ConnectFiles"]),
         .library(name: "ConnectTestSupport", targets: ["ConnectTestSupport"]),
     ],
     targets: [
@@ -19,12 +20,14 @@ let package = Package(
         .target(name: "ConnectAuth", dependencies: ["ConnectCore", "ConnectNetworking"]),
         .target(name: "ConnectFeatures", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectAuth"]),
         .target(name: "ConnectCalls", dependencies: ["ConnectCore", "ConnectNetworking"]),
-        .target(name: "ConnectChat", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls"]),
-        .target(name: "ConnectTestSupport", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls", "ConnectChat"]),
+        .target(name: "ConnectFiles", dependencies: ["ConnectNetworking"]),
+        .target(name: "ConnectChat", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls", "ConnectFiles"]),
+        .target(name: "ConnectTestSupport", dependencies: ["ConnectCore", "ConnectNetworking", "ConnectCalls", "ConnectChat", "ConnectFiles", "ConnectFeatures"]),
         .testTarget(name: "ConnectNetworkingTests", dependencies: ["ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectAuthTests", dependencies: ["ConnectAuth", "ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectFeaturesTests", dependencies: ["ConnectFeatures", "ConnectAuth", "ConnectNetworking", "ConnectTestSupport"]),
-        .testTarget(name: "ConnectChatTests", dependencies: ["ConnectChat", "ConnectCalls", "ConnectNetworking", "ConnectTestSupport"]),
+        .testTarget(name: "ConnectChatTests", dependencies: ["ConnectChat", "ConnectCalls", "ConnectNetworking", "ConnectTestSupport", "ConnectFiles"]),
+        .testTarget(name: "ConnectFilesTests", dependencies: ["ConnectFiles", "ConnectNetworking", "ConnectTestSupport"]),
         .testTarget(name: "ConnectCallsTests", dependencies: ["ConnectCalls", "ConnectCore", "ConnectNetworking", "ConnectTestSupport"]),
     ]
 )

@@ -1,4 +1,5 @@
 import ConnectCalls
+import ConnectFiles
 import Foundation
 import Observation
 
@@ -38,12 +39,14 @@ public final class ChatModel {
     /// Граница «Новые сообщения», зафиксированная при открытии.
     public private(set) var firstUnreadMessageId: String?
     public var draft = ""
+    public private(set) var pendingAttachments: [PendingAttachment] = []
 
     private let me: ChatUser
     private let api: any ChatAPI
     private let unread: UnreadModel?
     private let rtcUrl: URL
     private let makeRoom: @MainActor () -> any SignalRoom
+    private let files: (any FileAPI)?
     private let now: @Sendable () -> Date
     private let sleep: @Sendable (Duration) async throws -> Void
     private var nextPage = 1
@@ -58,6 +61,7 @@ public final class ChatModel {
         unread: UnreadModel?,
         rtcUrl: URL,
         makeRoom: @escaping @MainActor () -> any SignalRoom,
+        files: (any FileAPI)? = nil,
         now: @escaping @Sendable () -> Date = Date.init,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
@@ -69,6 +73,7 @@ public final class ChatModel {
         self.unread = unread
         self.rtcUrl = rtcUrl
         self.makeRoom = makeRoom
+        self.files = files
         self.now = now
         self.sleep = sleep
     }
@@ -76,7 +81,17 @@ public final class ChatModel {
     public var messages: [ChatMessage] { timeline.messages }
 
     public var canSend: Bool {
-        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPartnerBanned
+        guard !isPartnerBanned, !pendingAttachments.contains(where: { $0.state == .uploading }) else { return false }
+        return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !uploadedAttachments.isEmpty
+    }
+
+    public var canAttach: Bool { files != nil && !isPartnerBanned }
+
+    private var uploadedAttachments: [ChatAttachment] {
+        pendingAttachments.compactMap {
+            if case let .uploaded(attachment) = $0.state { return attachment }
+            return nil
+        }
     }
 
     public func isOwn(_ message: ChatMessage) -> Bool {
@@ -215,10 +230,46 @@ public final class ChatModel {
 
     // MARK: - Действия
 
+    // MARK: - Вложения
+
+    /// Загружает файл в connect-s3 (корзина `file-chat`, ключ — комната) до отправки сообщения.
+    public func attach(data: Data, filename: String, mimeType: String) async {
+        guard let files else { return }
+        let pending = PendingAttachment(filename: filename)
+        pendingAttachments.append(pending)
+        do {
+            let uploaded = try await files.upload(data: data, filename: filename, mimeType: mimeType, bucket: .chat, key: roomId, userId: me.userId, username: me.username)
+            let attachment = ChatAttachment(urlS3: uploaded.urlS3, previewUrlS3: uploaded.previewUrlS3, name: uploaded.name, extension: uploaded.extension)
+            guard pendingAttachments.contains(where: { $0.id == pending.id }) else {
+                // Файл убрали, пока он загружался.
+                try? await files.delete(urls: [uploaded.urlS3])
+                return
+            }
+            setAttachmentState(pending.id, .uploaded(attachment))
+        } catch {
+            setAttachmentState(pending.id, .failed)
+        }
+    }
+
+    public func removeAttachment(_ id: UUID) async {
+        guard let index = pendingAttachments.firstIndex(where: { $0.id == id }) else { return }
+        let removed = pendingAttachments.remove(at: index)
+        if case let .uploaded(attachment) = removed.state {
+            try? await files?.delete(urls: [attachment.urlS3])
+        }
+    }
+
+    private func setAttachmentState(_ id: UUID, _ state: PendingAttachment.State) {
+        guard let index = pendingAttachments.firstIndex(where: { $0.id == id }) else { return }
+        pendingAttachments[index].state = state
+    }
+
     public func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isPartnerBanned else { return }
+        guard canSend else { return }
+        let attachments = uploadedAttachments
         draft = ""
+        pendingAttachments.removeAll()
         let timestamp = Int64(now().timeIntervalSince1970 * 1000)
         let localId = "local-\(kind == .p2p ? "p2p" : "group")-\(timestamp)-\(me.userId)"
         let message = ChatMessage(
@@ -228,6 +279,7 @@ public final class ChatModel {
             createdAtMilliseconds: timestamp,
             authorId: me.userId,
             username: me.username,
+            attachments: attachments,
             delivery: .sending
         )
         timeline.merge([message])
@@ -282,5 +334,22 @@ public final class ChatModel {
     public func markVisible(_ messageIds: [String]) {
         let others = messages.filter { messageIds.contains($0.id) && !isOwn($0) && $0.callSummary == nil }.map(\.id)
         unread?.markRead(others)
+    }
+}
+
+/// Файл, прикреплённый к ещё не отправленному сообщению.
+public struct PendingAttachment: Identifiable, Sendable, Equatable {
+    public enum State: Sendable, Equatable {
+        case uploading
+        case uploaded(ChatAttachment)
+        case failed
+    }
+
+    public let id = UUID()
+    public var filename: String
+    public var state: State = .uploading
+
+    public init(filename: String) {
+        self.filename = filename
     }
 }

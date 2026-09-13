@@ -214,3 +214,43 @@ struct ChatModelTests {
 final class RoomBox {
     var rooms: [FakeCallRoom] = []
 }
+
+@MainActor
+@Suite("Вложения в чате")
+struct ChatAttachmentTests {
+    @Test("файл загружается до отправки и уходит вложением сообщения")
+    func attachAndSend() async throws {
+        let api = FakeChatAPI(messages: ["room": []])
+        let files = FakeFileAPI()
+        let chat = ChatModel(kind: .p2p, roomId: "room", title: "Иван", me: ChatUser(userId: "me", username: "me"), api: api, unread: nil, rtcUrl: URL(string: "wss://x")!, makeRoom: { FakeCallRoom() }, files: files)
+        await chat.load()
+
+        #expect(!chat.canSend)
+        await chat.attach(data: Data("pdf".utf8), filename: "План.PDF", mimeType: "application/pdf")
+        #expect(chat.canSend)
+
+        await chat.send()
+
+        let sent = try #require(await api.sent.first)
+        #expect(sent.message.isEmpty)
+        #expect(sent.attachedFiles == [ChatAttachment(urlS3: "file-chat/room/1.pdf", name: "План", extension: ".pdf")])
+        #expect(chat.pendingAttachments.isEmpty)
+        #expect(chat.messages.first?.attachments.first?.kind == .pdf)
+    }
+
+    @Test("убранный загруженный файл удаляется из хранилища, ошибка загрузки не даёт отправить")
+    func removeAndFailure() async throws {
+        let files = FakeFileAPI()
+        let chat = ChatModel(kind: .group, roomId: "g", title: "G", me: ChatUser(userId: "me", username: "me"), api: FakeChatAPI(messages: ["g": []]), unread: nil, rtcUrl: URL(string: "wss://x")!, makeRoom: { FakeCallRoom() }, files: files)
+
+        await chat.attach(data: Data("1".utf8), filename: "a.png", mimeType: "image/png")
+        let id = try #require(chat.pendingAttachments.first?.id)
+        await chat.removeAttachment(id)
+        #expect(await files.deletedUrls == ["file-chat/g/1.png"])
+
+        await files.setFailUpload(true)
+        await chat.attach(data: Data("2".utf8), filename: "b.png", mimeType: "image/png")
+        #expect(chat.pendingAttachments.first?.state == .failed)
+        #expect(!chat.canSend)
+    }
+}

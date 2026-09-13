@@ -6,13 +6,20 @@ import FoundationNetworking
 public struct HTTPResponse: Sendable {
     public var statusCode: Int
     public var body: Data
+    /// Заголовки с именами в нижнем регистре.
+    public var headers: [String: String]
 
-    public init(statusCode: Int, body: Data) {
+    public init(statusCode: Int, body: Data, headers: [String: String] = [:]) {
         self.statusCode = statusCode
         self.body = body
+        self.headers = Dictionary(headers.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { $1 })
     }
 
     public var isSuccess: Bool { (200..<300).contains(statusCode) }
+
+    public func header(_ name: String) -> String? {
+        headers[name.lowercased()]
+    }
 }
 
 /// Отправка запроса. Протокол позволяет подменять сеть в тестах и UI-стабах.
@@ -32,6 +39,12 @@ public struct URLSessionTransport: HTTPTransport {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
         }
-        return HTTPResponse(statusCode: httpResponse.statusCode, body: data)
+        var headers: [String: String] = [:]
+        for (key, value) in httpResponse.allHeaderFields {
+            if let key = key as? String, let value = value as? String {
+                headers[key] = value
+            }
+        }
+        return HTTPResponse(statusCode: httpResponse.statusCode, body: data, headers: headers)
     }
 }

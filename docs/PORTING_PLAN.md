@@ -23,15 +23,15 @@
 | --- | --- | --- |
 | Вход, подтверждение email | `features/auth/AuthGate.tsx` | ✅ |
 | Регистрация (имя, логин, email, телефон, сила пароля) | там же, `POST /api/user/register-profile` | ⬜ |
-| Профиль: карточка, аватар и галерея фото (S3 `user-gallery`) | `SettingsProfileSection.tsx`, `UserProfileImages.tsx` | 🟡 только просмотр |
+| Профиль: карточка, аватар и галерея фото (S3 `user-gallery`) | `SettingsProfileSection.tsx`, `UserProfileImages.tsx` | ✅ смена аватара и просмотр галереи |
 | Приветственный стикер | `features/greeting/*` | ⬜ |
 | Аккаунт: имя, логин, email, телефон со статусами заявки | `AccountSettingsSection.tsx`, SETTINGS `/api/account/*` | ⬜ |
-| Профиль другого пользователя | `OtherUserProfileInfo.tsx` | ⬜ |
+| Профиль другого пользователя | `OtherUserProfileInfo.tsx` | ✅ |
 | Список контактов, присутствие, «был(а)» | `ContactList.tsx`, `presence.ts` | 🟡 без живого потока статусов и сортировки по имени |
-| Поиск по логину и телефону, добавление, удаление | `contactSearch.ts`, `ContactActions.tsx` | ⬜ |
-| Блокировка личного чата | `/api/p2p-room/ban/*` | ⬜ |
+| Поиск по логину и телефону, добавление, удаление, «Написать» | `contactSearch.ts`, `ContactActions.tsx` | ✅ |
+| Блокировка личного чата | `/api/p2p-room/ban/*` | ✅ |
 | Синхронизация телефонной книги (CNContactStore) | `contactSync.ts` | ⬜ 🖥 желателен пакетный поиск по телефонам |
-| Аватары из S3 (batch download) | `useS3BatchDownload.ts` | ⬜ |
+| Аватары из S3 (batch download) | `useS3BatchDownload.ts` | 🟡 контакты и профиль; в списках чатов — ⬜ |
 
 ## Этап 3. Сообщения
 
@@ -42,7 +42,7 @@
 | Реалтайм чата через текстовую комнату LiveKit (`chat`, `chat:delete`, `chat:edit`) | `TextSessionHolder.tsx` | ✅ |
 | Удаление (одно и выделение), копирование, выделение цветом и жирностью | `ChatMessageMenuModal.tsx`, `/api/chat-message/*` | 🟡 удаление одного, копирование, показ оформления; нет выделения нескольких и создания оформления |
 | Эмодзи | `ChatEmojiPicker.tsx` | ⬜ |
-| Вложения: загрузка с прогрессом (SSE S3), отмена, скачивание, кэш, просмотрщик | `useChatAttachmentUpload.ts`, `MediaViewer.tsx` | ⬜ |
+| Вложения: загрузка с прогрессом (SSE S3), отмена, скачивание, кэш, просмотрщик | `useChatAttachmentUpload.ts`, `MediaViewer.tsx` | 🟡 фото/видео/файлы, превью картинок, QuickLook, кэш; без процента прогресса |
 | Непрочитанные: переход к первому, отметка прочтения, живой поток уведомлений | `useUnreadPosition.ts`, NOTIF `/messages/read` | ✅ |
 | Итоги звонков в чате | `CallSummaryMessage.tsx` | 🟡 показ; отправка после звонка — ⬜ |
 | Центр уведомлений и тосты | `features/notifications/*` | ⬜ |

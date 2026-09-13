@@ -61,3 +61,76 @@ struct ContactsModelTests {
         #expect(model.state == .failed("Не удалось загрузить контакты"))
     }
 }
+
+@MainActor
+@Suite("Действия с контактами")
+struct ContactActionsTests {
+    @Test("запрос поиска: логин с одним @, телефон в формате +7 (999) 123-45-67", arguments: [
+        ("ivan", ContactQuery.login("@ivan")),
+        ("@@ivan", .login("@ivan")),
+        ("8 999 123-45-67", .phone("+7 (999) 123-45-67")),
+        ("+7(999)1234567", .phone("+7 (999) 123-45-67")),
+        ("9991234567", .phone("+7 (999) 123-45-67")),
+    ])
+    func queries(raw: String, expected: ContactQuery) {
+        #expect(ContactQuery(raw) == expected)
+    }
+
+    @Test("неполный телефон и пустой запрос не ищутся")
+    func invalidQueries() {
+        #expect(ContactQuery("12-34") == nil)
+        #expect(ContactQuery("  ") == nil)
+        #expect(ContactQuery("@") == nil)
+    }
+
+    @Test("поиск по логину кодирует @ и кириллицу в пути, 404 — не найден")
+    func remoteSearch() async throws {
+        let transport = StubTransport()
+        transport.on("/api/user-card/search-by-login/@иван") { _ in HTTPResponse(statusCode: 404, body: Data()) }
+        let client = HTTPClient(baseURL: try #require(URL(string: "https://domain.cnnect.ru")), transport: transport)
+        let repository = RemoteContactsRepository(client: client)
+
+        let result = try await repository.search(.login("@иван"))
+
+        #expect(result == nil)
+        let url = try #require(transport.requests.first?.url?.absoluteString)
+        #expect(url.hasSuffix("/search-by-login/%40%D0%B8%D0%B2%D0%B0%D0%BD"))
+    }
+
+    @Test("найти, добавить и удалить контакт")
+    func searchAddRemove() async {
+        let ivan = Contact(userId: "u-ivan", name: "Иван", username: "ivan", status: .online)
+        let repository = FakeContactsRepository(contacts: ["me": []], directory: [ivan, Contact(userId: "me", name: "Я", username: "me")])
+        let model = ContactsModel(userId: "me", repository: repository)
+        await model.load()
+
+        model.searchText = "@ivan"
+        await model.search()
+        #expect(model.searchResult == .found(ivan))
+        #expect(!model.isContact(ivan))
+
+        #expect(await model.add(ivan))
+        #expect(model.state == .loaded([ivan]))
+        #expect(model.searchResult == .idle)
+        #expect(await repository.contactsByUser["me"] == [ivan])
+
+        #expect(await model.remove(ivan))
+        #expect(model.state == .loaded([]))
+
+        model.searchText = "me"
+        await model.search()
+        if case let .found(me) = model.searchResult {
+            #expect(!(await model.add(me)))
+        }
+        model.searchText = "nobody"
+        await model.search()
+        #expect(model.searchResult == .notFound)
+    }
+
+    @Test("фото профиля: аватар первым, без повторов")
+    func photoKeys() {
+        var contact = Contact(userId: "u", name: "", username: "u", avatarKey: "a")
+        contact.gallery = ["b", "a", "", "c"]
+        #expect(contact.photoKeys == ["a", "b", "c"])
+    }
+}

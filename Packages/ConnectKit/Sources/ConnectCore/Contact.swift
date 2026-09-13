@@ -11,6 +11,8 @@ public struct Contact: Decodable, Sendable, Equatable, Identifiable {
     public var lastSeenAt: Date?
     /// Ключ аватара в connect-s3, а не публичный URL.
     public var avatarKey: String?
+    /// Фото профиля: ключи connect-s3.
+    public var gallery: [String] = []
 
     public var id: String { userId }
 
@@ -42,7 +44,7 @@ public struct Contact: Decodable, Sendable, Equatable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case userId, id, name, username, status, lastSeenAt, avatarUrl, avatarUrlS3
+        case userId, id, name, username, status, lastSeenAt, avatarUrl, avatarUrlS3, gallery
     }
 
     public init(from decoder: any Decoder) throws {
@@ -60,6 +62,13 @@ public struct Contact: Decodable, Sendable, Equatable, Identifiable {
         let s3Key = try container.decodeIfPresent(String.self, forKey: .avatarUrlS3)
         let url = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         avatarKey = [s3Key, url].compactMap { $0 }.first { !$0.isEmpty }
+        gallery = (try? container.decodeIfPresent([String].self, forKey: .gallery)) ?? []
+    }
+
+    /// Фото для просмотра: аватар первым, без повторов (`OtherUserProfileInfo.tsx`).
+    public var photoKeys: [String] {
+        var seen = Set<String>()
+        return ([avatarKey].compactMap { $0 } + gallery).filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     static func parseDate(_ value: String) -> Date? {

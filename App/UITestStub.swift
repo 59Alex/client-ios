@@ -3,9 +3,11 @@ import ConnectAuth
 import ConnectCalls
 import ConnectChat
 import ConnectCore
+import ConnectFeatures
 import ConnectNetworking
 import ConnectTestSupport
 import Foundation
+import UIKit
 
 /// Офлайн-ответы сервисов для XCUITest: реальная логика авторизации и звонков, но без сети,
 /// Keychain и WebRTC.
@@ -99,7 +101,7 @@ enum UITestStub {
             ChatMessage(id: "00000000-0000-4000-8000-000000000001", text: "Привет! Созвонимся?", createdAtMilliseconds: base - 26 * 3_600_000, authorId: "qa-2", username: partner),
             ChatMessage(id: "00000000-0000-4000-8000-000000000002", text: "__P2P_CALL_SUMMARY__:125|\(base - 25 * 3_600_000)", createdAtMilliseconds: base - 25 * 3_600_000, authorId: "qa-1", username: "@qa_wallpaper_1"),
             ChatMessage(id: "00000000-0000-4000-8000-000000000003", text: "Отлично поговорили", createdAtMilliseconds: base - 600_000, authorId: "qa-1", username: "@qa_wallpaper_1", weights: [WeightRange(id: "w1", from: 0, to: 6, state: .bold)]),
-            ChatMessage(id: "00000000-0000-4000-8000-000000000004", text: "Да, скинул файл", createdAtMilliseconds: base - 300_000, authorId: "qa-2", username: partner, attachments: [ChatAttachment(urlS3: "chat/plan.pdf", name: "План", extension: ".pdf")], markers: [MarkerRange(id: "m1", from: 12, to: 15, color: "#ffe066")]),
+            ChatMessage(id: "00000000-0000-4000-8000-000000000004", text: "Да, скинул файл", createdAtMilliseconds: base - 300_000, authorId: "qa-2", username: partner, attachments: [ChatAttachment(urlS3: "chat/plan.pdf", name: "План", extension: ".pdf"), ChatAttachment(urlS3: "file-chat/room-qa-2/photo.png", name: "photo", extension: ".png")], markers: [MarkerRange(id: "m1", from: 12, to: 15, color: "#ffe066")]),
         ]
         return FakeChatAPI(
             ownerUsername: "@qa_wallpaper_1",
@@ -117,6 +119,31 @@ enum UITestStub {
                 UnreadChat(chatId: "room-qa-2", chatType: "P2P", unread: 1, firstUnreadMessageId: "00000000-0000-4000-8000-000000000004"),
             ])
         )
+    }
+
+    /// Контакты стаба и «справочник» для поиска: `@qa_wallpaper_4` можно найти и добавить.
+    static func makeContactsRepository() -> FakeContactsRepository {
+        FakeContactsRepository(
+            contacts: ["qa-1": contacts],
+            directory: contacts + [
+                Contact(userId: "qa-4", name: "QA Wallpaper Four", username: "qa_wallpaper_4", status: .online, avatarKey: "user-gallery/qa-4/avatar.png"),
+            ]
+        )
+    }
+
+    /// Файлы стаба: аватар найденного пользователя и картинка в чате.
+    static func makeFileAPI() -> FakeFileAPI {
+        FakeFileAPI(files: [
+            "user-gallery/qa-4/avatar.png": solidImage(color: .systemTeal),
+            "file-chat/room-qa-2/photo.png": solidImage(color: .systemOrange),
+        ])
+    }
+
+    private static func solidImage(color: UIColor) -> Data {
+        UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).pngData { context in
+            color.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        }
     }
 
     /// SSE без событий: реальный поток в стабе не нужен, звонки идут через FakeP2PCallAPI.
