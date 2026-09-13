@@ -5,7 +5,7 @@ import FoundationNetworking
 #endif
 
 /// Новое сообщение для `message/create`.
-public struct OutgoingMessage: Encodable, Sendable, Equatable {
+public struct OutgoingMessage: Sendable, Equatable {
     public var userId: String
     public var roomId: String
     public var message: String
@@ -92,19 +92,28 @@ public struct RemoteChatAPI: ChatAPI {
             try await main.getDecoded("/api/p2p-room/get-all-by-jwt-pageable?page=\(page)", as: [P2PRoomDTO].self).map(\.summary)
         case .group:
             try await main.getDecoded("/api/group-room/get-all-by-jwt-pageable?page=\(page)", as: [GroupRoomDTO].self).map(\.summary)
+        case .channel:
+            []
         }
     }
 
     public func snapshot(_ kind: ChatKind, roomId: String) async throws -> ChatSnapshot {
-        try await main.getDecoded("/api/\(kind.pathPrefix)/get/\(Self.path(roomId))")
+        guard kind == .channel else {
+            return try await main.getDecoded("/api/\(kind.pathPrefix)/get/\(Self.path(roomId))")
+        }
+        // У канала нет снимка и страниц: сервис отдаёт все сообщения массивом.
+        let messages = try await main.getDecoded("/api/chat-message/get-for-channel/\(Self.path(roomId))", as: [ChatMessage].self)
+        return ChatSnapshot(id: roomId, messages: MessagePage(content: messages, number: 0, last: true, totalElements: messages.count))
     }
 
     public func history(_ kind: ChatKind, roomId: String, page: Int) async throws -> MessagePage {
-        try await main.getDecoded("/api/\(kind.pathPrefix)/message/get-for-room/\(Self.path(roomId))?page=\(page)")
+        guard kind != .channel else { return MessagePage(content: [], number: page, last: true, totalElements: 0) }
+        return try await main.getDecoded("/api/\(kind.pathPrefix)/message/get-for-room/\(Self.path(roomId))?page=\(page)")
     }
 
     public func send(_ kind: ChatKind, message: OutgoingMessage) async throws -> String {
-        let response = try await main.post("/api/\(kind.pathPrefix)/message/create", json: message)
+        let path = kind == .channel ? "/api/chat-message/create" : "/api/\(kind.pathPrefix)/message/create"
+        let response = try await main.post(path, json: OutgoingMessageBody(message: message, kind: kind))
         try HTTPClient.requireSuccess(response)
         // Сервис отдаёт идентификатор строкой или объектом `{id}`.
         if let object = try? JSONDecoder().decode(IdResponse.self, from: response.body) { return object.id }
@@ -119,7 +128,11 @@ public struct RemoteChatAPI: ChatAPI {
     }
 
     public func textToken(_ kind: ChatKind, userId: String, roomId: String) async throws -> String {
-        try await main.postDecoded("/api/\(kind.pathPrefix)/get-text-token", json: TokenRequest(userId: userId, roomId: roomId), as: TokenResponse.self)
+        if kind == .channel {
+            return try await main.postDecoded("/api/connection/get-token", json: ChannelTokenRequest(userId: userId, channelId: roomId), as: TokenResponse.self)
+                .openviduConnectionUri
+        }
+        return try await main.postDecoded("/api/\(kind.pathPrefix)/get-text-token", json: TokenRequest(userId: userId, roomId: roomId), as: TokenResponse.self)
             .openviduConnectionUri
     }
 
@@ -169,8 +182,33 @@ extension ChatKind {
         switch self {
         case .p2p: "p2p-room"
         case .group: "group-room"
+        case .channel: "channel"
         }
     }
+}
+
+/// Тело `message/create`: у личных и групповых чатов `roomId`, у канала — `channelId`.
+struct OutgoingMessageBody: Encodable, Sendable {
+    let message: OutgoingMessage
+    let kind: ChatKind
+
+    enum CodingKeys: String, CodingKey {
+        case userId, roomId, channelId, message, dateTimeCreateTimestamp, attachedFiles
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(message.userId, forKey: .userId)
+        try container.encode(message.roomId, forKey: kind == .channel ? .channelId : .roomId)
+        try container.encode(message.message, forKey: .message)
+        try container.encode(message.dateTimeCreateTimestamp, forKey: .dateTimeCreateTimestamp)
+        try container.encode(message.attachedFiles, forKey: .attachedFiles)
+    }
+}
+
+private struct ChannelTokenRequest: Encodable, Sendable {
+    let userId: String
+    let channelId: String
 }
 
 private struct IdResponse: Decodable {

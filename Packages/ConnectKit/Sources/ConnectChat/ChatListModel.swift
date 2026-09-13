@@ -46,7 +46,7 @@ public final class ChatListModel {
             return
         } catch {
             if case .loaded = state { return }
-            state = .failed(kind == .p2p ? "Не удалось загрузить чаты" : "Не удалось загрузить группы")
+            state = .failed(kind == .group ? "Не удалось загрузить группы" : "Не удалось загрузить чаты")
         }
     }
 

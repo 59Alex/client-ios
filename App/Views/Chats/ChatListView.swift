@@ -11,6 +11,7 @@ struct ChatListView: View {
     let inboxBadge: Int
     let onOpenInbox: () -> Void
     var onCreateGroup: (() -> Void)?
+    var onOpenProfile: (() -> Void)?
     var groupTools: GroupTools?
 
     private var title: String { model.kind == .p2p ? "Чаты" : "Группы" }
@@ -28,6 +29,15 @@ struct ChatListView: View {
                         }
                         .accessibilityLabel(inboxBadge > 0 ? "Уведомления, новых: \(inboxBadge)" : "Уведомления")
                         .accessibilityIdentifier("inbox.open")
+                    }
+                    if let onOpenProfile {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button(action: onOpenProfile) {
+                                Image(systemName: "person.crop.circle")
+                            }
+                            .accessibilityLabel("Профиль")
+                            .accessibilityIdentifier("profile.open")
+                        }
                     }
                     if let onCreateGroup {
                         ToolbarItem(placement: .primaryAction) {

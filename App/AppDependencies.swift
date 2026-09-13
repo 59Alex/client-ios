@@ -5,6 +5,7 @@ import ConnectCore
 import ConnectFeatures
 import ConnectFiles
 import ConnectInbox
+import ConnectRooms
 import ConnectNetworking
 import Foundation
 #if DEBUG
@@ -35,6 +36,7 @@ final class AppDependencies {
         var fileAPI: (any FileAPI)?
         var contacts: (any ContactsRepository)?
         var inbox: (any InboxAPI)?
+        var rooms: (any RoomsAPI)?
     }
 
     init(
@@ -75,6 +77,7 @@ final class AppDependencies {
         let makeSignalRoom = overrides.makeSignalRoom ?? { LiveKitCallRoom() }
         let chatUser = ChatUser(userId: user.userId, username: user.username)
         let inbox = overrides.inbox ?? RemoteInboxAPI(main: mainClient, notifications: notificationClient)
+        let roomsAPI = overrides.rooms ?? RemoteRoomsAPI(main: mainClient)
         let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client)
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("connect-media", isDirectory: true)
@@ -91,6 +94,12 @@ final class AppDependencies {
             inbox: inbox,
             notifications: NotificationCenterModel(api: inbox),
             invitations: InvitationsModel(me: user.userId, api: inbox),
+            rooms: RoomsModel(me: user.userId, api: roomsAPI),
+            feeds: FeedsModel(me: user.userId, api: roomsAPI),
+            uiOrigin: config.uiOrigin,
+            makeRoom: { RoomModel(roomId: $0, me: user.userId, api: roomsAPI) },
+            makeCalendar: { RoomCalendarModel(roomId: $0, api: roomsAPI) },
+            makeFeed: { FeedModel(feedId: $0, me: chatUser, api: roomsAPI) },
             p2pChats: ChatListModel(kind: .p2p, api: chatAPI),
             groupChats: ChatListModel(kind: .group, api: chatAPI),
             makeChat: { route in
@@ -123,7 +132,8 @@ final class AppDependencies {
                     makeSignalRoom: { FakeCallRoom() },
                     fileAPI: UITestStub.makeFileAPI(),
                     contacts: UITestStub.makeContactsRepository(),
-                    inbox: UITestStub.makeInboxAPI()
+                    inbox: UITestStub.makeInboxAPI(),
+                    rooms: UITestStub.makeRoomsAPI()
                 )
             )
         }
@@ -150,6 +160,12 @@ final class SignedInDependencies {
     let inbox: any InboxAPI
     let notifications: NotificationCenterModel
     let invitations: InvitationsModel
+    let rooms: RoomsModel
+    let feeds: FeedsModel
+    let uiOrigin: URL
+    let makeRoom: @MainActor (String) -> RoomModel
+    let makeCalendar: @MainActor (String) -> RoomCalendarModel
+    let makeFeed: @MainActor (String) -> FeedModel
     let p2pChats: ChatListModel
     let groupChats: ChatListModel
     let makeChat: @MainActor (ChatRoute) -> ChatModel
@@ -166,6 +182,12 @@ final class SignedInDependencies {
         inbox: any InboxAPI,
         notifications: NotificationCenterModel,
         invitations: InvitationsModel,
+        rooms: RoomsModel,
+        feeds: FeedsModel,
+        uiOrigin: URL,
+        makeRoom: @escaping @MainActor (String) -> RoomModel,
+        makeCalendar: @escaping @MainActor (String) -> RoomCalendarModel,
+        makeFeed: @escaping @MainActor (String) -> FeedModel,
         p2pChats: ChatListModel,
         groupChats: ChatListModel,
         makeChat: @escaping @MainActor (ChatRoute) -> ChatModel
@@ -181,6 +203,12 @@ final class SignedInDependencies {
         self.inbox = inbox
         self.notifications = notifications
         self.invitations = invitations
+        self.rooms = rooms
+        self.feeds = feeds
+        self.uiOrigin = uiOrigin
+        self.makeRoom = makeRoom
+        self.makeCalendar = makeCalendar
+        self.makeFeed = makeFeed
         self.p2pChats = p2pChats
         self.groupChats = groupChats
         self.makeChat = makeChat

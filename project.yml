@@ -51,6 +51,7 @@ targets:
           - ConnectChat
           - ConnectFiles
           - ConnectInbox
+          - ConnectRooms
           - ConnectTestSupport
       - package: LiveKit
     settings:
