@@ -1,0 +1,77 @@
+# Xcode-проект генерируется XcodeGen: `xcodegen generate`. Connect.xcodeproj в Git не хранится.
+name: Connect
+
+options:
+  bundleIdPrefix: ru.cnnect
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: ru
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Подпись для устройства и TestFlight настраивается отдельно, когда появится Apple Developer Team.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    DEVELOPMENT_TEAM: ""
+
+packages:
+  ConnectKit:
+    path: Packages/ConnectKit
+
+targets:
+  Connect:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: ConnectKit
+        products:
+          - ConnectCore
+          - ConnectNetworking
+          - ConnectAuth
+          - ConnectFeatures
+          - ConnectTestSupport
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.cnnect.ios
+        PRODUCT_NAME: Connect
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: cnnect
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        TARGETED_DEVICE_FAMILY: "1"
+        ENABLE_PREVIEWS: YES
+        # Иконки приложения пока нет: знак для iOS выбирается отдельно (cnnect-workspace/design/logo).
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+
+  ConnectUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ConnectUITests
+    dependencies:
+      - target: Connect
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ru.cnnect.ios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Connect
+        TARGETED_DEVICE_FAMILY: "1"
+
+schemes:
+  Connect:
+    build:
+      targets:
+        Connect: all
+    test:
+      config: Debug
+      targets:
+        - ConnectUITests
+      gatherCoverageData: false
