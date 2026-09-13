@@ -125,6 +125,7 @@ private struct RoomScreen: View {
     @State private var isCalendarShown = false
     @State private var isInviteShown = false
     @State private var newChannel: NewChannel?
+    @State private var isActionsShown = false
 
     var body: some View {
         List {
@@ -171,20 +172,25 @@ private struct RoomScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Календарь", systemImage: "calendar") { isCalendarShown = true }
-                    Button("Пригласить", systemImage: "person.badge.plus") { isInviteShown = true }
-                    ShareLink("Ссылка-приглашение", item: InviteLinks.roomURL(origin: origin, roomId: model.roomId))
-                    if model.canManage {
-                        Divider()
-                        Button("Текстовый канал", systemImage: "number") { newChannel = NewChannel(kind: .text) }
-                        Button("Голосовой канал", systemImage: "speaker.wave.2") { newChannel = NewChannel(kind: .voice) }
-                    }
-                } label: {
+                ShareLink(item: InviteLinks.roomURL(origin: origin, roomId: model.roomId)) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Поделиться ссылкой-приглашением")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { isActionsShown = true } label: {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel("Действия комнаты")
                 .accessibilityIdentifier("room.menu")
+            }
+        }
+        .confirmationDialog("Комната", isPresented: $isActionsShown) {
+            Button("Календарь") { isCalendarShown = true }
+            Button("Пригласить") { isInviteShown = true }
+            if model.canManage {
+                Button("Текстовый канал") { newChannel = NewChannel(kind: .text) }
+                Button("Голосовой канал") { newChannel = NewChannel(kind: .voice) }
             }
         }
         .task { await model.load() }
@@ -412,6 +418,7 @@ private struct FeedScreen: View {
     @State private var members: FeedMembers?
     @State private var isMembersShown = false
     @State private var confirmDelete = false
+    @State private var isActionsShown = false
 
     private var summaryStamp: Int {
         unread.summary.chats.first { $0.chatType == "POST_FEED" && $0.chatId == model.feedId }?.unread ?? -1
@@ -462,23 +469,25 @@ private struct FeedScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Участники", systemImage: "person.2") {
-                        Task {
-                            members = await model.members()
-                            isMembersShown = true
-                        }
-                    }
-                    if model.canUnsubscribe {
-                        Button("Отписаться", systemImage: "bell.slash") { Task { await model.setSubscribed(false); onChanged() } }
-                    }
-                    if model.canDelete {
-                        Button("Удалить канал", systemImage: "trash", role: .destructive) { confirmDelete = true }
-                    }
-                } label: {
+                Button { isActionsShown = true } label: {
                     Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("Действия канала")
                 .accessibilityIdentifier("feed.menu")
+            }
+        }
+        .confirmationDialog("Канал", isPresented: $isActionsShown) {
+            Button("Участники") {
+                Task {
+                    members = await model.members()
+                    isMembersShown = true
+                }
+            }
+            if model.canUnsubscribe {
+                Button("Отписаться") { Task { await model.setSubscribed(false); onChanged() } }
+            }
+            if model.canDelete {
+                Button("Удалить канал", role: .destructive) { confirmDelete = true }
             }
         }
         .task { await model.load() }
