@@ -177,7 +177,6 @@ struct HomeView: View {
         .task { await dependencies.rooms.load() }
         .task { await dependencies.toasts.refresh() }
         .modifier(ConnectionTracking(dependencies: dependencies, isShown: $isConnectionErrorsShown))
-        }
         .task(id: dependencies.contacts.presenceUserIds) {
             await dependencies.contacts.watchPresence(api: dependencies.presence)
         }
