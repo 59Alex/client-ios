@@ -40,7 +40,7 @@ final class LiveKitCallRoom: CallRoom {
     }
 
     func publishMicrophone(trackName: String, muted: Bool) async throws {
-        let track = LocalAudioTrack.createTrack(name: trackName, options: AudioCaptureOptions())
+        let track = LocalAudioTrack.createTrack(name: trackName, options: AudioProcessing.captureOptions)
         let publication = try await room.localParticipant.publish(audioTrack: track, options: AudioPublishOptions(name: trackName))
         microphone = track
         if muted {
