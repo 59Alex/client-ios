@@ -8,6 +8,8 @@ public struct InboxNotification: Decodable, Sendable, Equatable, Identifiable {
         case group = "GROUP"
         case room = "ROOM"
         case postFeed = "POST_FEED"
+        /// Комментарий к посту: в центре уведомлений, но не в счётчике канала.
+        case postComment = "POST_COMMENT"
         case roomEvent = "ROOM_EVENT"
         case unknown
     }
@@ -65,6 +67,7 @@ public struct InboxNotification: Decodable, Sendable, Equatable, Identifiable {
         case .roomEvent: "Событие · \((roomName?.isEmpty == false ? roomName : nil) ?? "Комната")"
         case .group: "Сообщение в группе"
         case .p2p: "Личное сообщение"
+        case .postComment: "Комментарий к посту"
         default: "Сообщение в канале"
         }
     }

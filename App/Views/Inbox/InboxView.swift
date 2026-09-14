@@ -16,15 +16,17 @@ struct InboxView: View {
     let invitations: InvitationsModel
     let onOpenChat: (ChatRoute) -> Void
     var onOpenRoom: ((_ roomId: String, _ name: String) -> Void)?
+    var onOpenFeeds: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var section: Section
 
-    init(notifications: NotificationCenterModel, invitations: InvitationsModel, initialSection: Section = .notifications, onOpenChat: @escaping (ChatRoute) -> Void, onOpenRoom: ((_ roomId: String, _ name: String) -> Void)? = nil) {
+    init(notifications: NotificationCenterModel, invitations: InvitationsModel, initialSection: Section = .notifications, onOpenChat: @escaping (ChatRoute) -> Void, onOpenRoom: ((_ roomId: String, _ name: String) -> Void)? = nil, onOpenFeeds: (() -> Void)? = nil) {
         self.notifications = notifications
         self.invitations = invitations
         self.onOpenChat = onOpenChat
         self.onOpenRoom = onOpenRoom
+        self.onOpenFeeds = onOpenFeeds
         _section = State(initialValue: initialSection)
     }
 
@@ -160,8 +162,11 @@ struct InboxView: View {
         case .room:
             dismiss()
             onOpenChat(ChatRoute(kind: .channel, roomId: chatId, title: "Канал"))
+        case .postFeed, .postComment:
+            dismiss()
+            onOpenFeeds?()
         default:
-            // Каналы-ленты и события календаря открываются из своих разделов.
+            // События календаря открываются из комнаты.
             break
         }
     }
