@@ -238,7 +238,7 @@ private struct RoomScreen: View {
 
     @ViewBuilder
     private func voiceChannel(_ channel: RoomChannel) -> some View {
-        let inChannel = voice.channelId == channel.id && voice.phase != .idle
+        let inChannel = voice.channelId == channel.id && (voice.phase == .active || voice.phase == .connecting)
         Button {
             Task {
                 if inChannel {
