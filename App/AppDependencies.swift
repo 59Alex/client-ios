@@ -126,6 +126,7 @@ final class AppDependencies {
             user: user,
             status: status,
             contacts: ContactsModel(userId: user.userId, repository: contactsRepository),
+            contactsRepository: contactsRepository,
             calls: calls,
             users: RemoteUserRepository(client: mainClient),
             files: files,
@@ -223,6 +224,7 @@ final class SignedInDependencies {
     let user: User
     let status: StatusService
     let contacts: ContactsModel
+    let contactsRepository: any ContactsRepository
     let calls: P2PCallModel
     let users: any UserRepository
     let files: any FileAPI
@@ -257,6 +259,7 @@ final class SignedInDependencies {
         user: User,
         status: StatusService,
         contacts: ContactsModel,
+        contactsRepository: any ContactsRepository,
         calls: P2PCallModel,
         users: any UserRepository,
         files: any FileAPI,
@@ -290,6 +293,7 @@ final class SignedInDependencies {
         self.user = user
         self.status = status
         self.contacts = contacts
+        self.contactsRepository = contactsRepository
         self.calls = calls
         self.users = users
         self.files = files

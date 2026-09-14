@@ -14,6 +14,10 @@ public protocol ContactsRepository: Sendable {
     func openChat(myUsername: String, companionUsername: String) async throws -> String
     func isBlocked(userId: String, contactUserId: String) async throws -> Bool
     func setBlocked(_ blocked: Bool, userId: String, contactUserId: String) async throws
+    /// Личный чат по id пользователей: `nil`, если его ещё нет.
+    func existingChat(userId: String, peerUserId: String) async throws -> String?
+    /// `POST /api/p2p-room/create` по id пользователей.
+    func createChat(userId: String, peerUserId: String) async throws -> String
 }
 
 /// Запрос поиска контакта, нормализованный как в `contactSearch.ts`.
@@ -88,6 +92,16 @@ public struct RemoteContactsRepository: ContactsRepository {
 
     public func openChat(myUsername: String, companionUsername: String) async throws -> String {
         try await client.postDecoded("/api/p2p-room/create-by-username", json: CreateByUsername(creator: myUsername, companion: companionUsername), as: IdResponse.self).id
+    }
+
+    public func existingChat(userId: String, peerUserId: String) async throws -> String? {
+        let response = try await client.get("/api/p2p-room/get-by-users/\(Self.pathComponent(userId))/\(Self.pathComponent(peerUserId))")
+        if response.statusCode == 404 { return nil }
+        return try HTTPClient.decode(response, as: IdResponse.self).id
+    }
+
+    public func createChat(userId: String, peerUserId: String) async throws -> String {
+        try await client.postDecoded("/api/p2p-room/create", json: CreateByUserIds(creator: .init(userId: userId), companion: .init(userId: peerUserId)), as: IdResponse.self).id
     }
 
     public func isBlocked(userId: String, contactUserId: String) async throws -> Bool {
@@ -357,5 +371,89 @@ public final class ContactsModel {
     static func sortName(_ contact: Contact) -> String {
         let name = contact.name.trimmingCharacters(in: .whitespacesAndNewlines)
         return (name.isEmpty ? String(contact.username.drop { $0 == "@" }) : name).lowercased()
+    }
+}
+
+private struct CreateByUserIds: Encodable, Sendable {
+    struct Member: Encodable, Sendable { let userId: String }
+    let creator: Member
+    let companion: Member
+}
+
+/// Итог поиска знакомых из телефонной книги (`contactSync.ts`).
+public struct PhoneBookSyncResult: Sendable, Equatable {
+    public var scanned: Int
+    public var matched: Int
+    public var created: Int
+    public var failed: Int
+    /// Новые личные чаты: в списке у них приветствие «С вами в connect!», пока чат не открыт.
+    public var createdRoomIds: [String]
+
+    public var message: String {
+        if created > 0 { return "Добавили чатов: \(created)" }
+        return matched > 0 ? "Все знакомые уже в чатах" : "Знакомых из контактов пока нет"
+    }
+}
+
+public enum PhoneBookSync {
+    public static let limit = 500
+    public static let concurrency = 4
+    public static let greeting = "С вами в connect!"
+
+    /// Номера в виде поиска Connect, без повторов, не больше 500.
+    public static func normalize(_ raw: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for number in raw {
+            guard result.count < limit, case let .phone(phone)? = ContactQuery(number), seen.insert(phone).inserted else { continue }
+            result.append(phone)
+        }
+        return result
+    }
+
+    /// Ищет владельцев номеров и заводит личные чаты с теми, с кем чата ещё нет. Номера никуда не сохраняются.
+    public static func run(numbers raw: [String], me: String, repository: any ContactsRepository) async -> PhoneBookSyncResult {
+        let numbers = normalize(raw)
+        guard !numbers.isEmpty else { return PhoneBookSyncResult(scanned: 0, matched: 0, created: 0, failed: 0, createdRoomIds: []) }
+
+        let found: [Contact??] = await concurrentMap(numbers) { phone in
+            do { return .some(try await repository.search(.phone(phone))) } catch { return .none }
+        }
+        var failed = found.filter { $0 == nil }.count
+        var partners: [String] = []
+        for case let .some(contact?) in found where contact.userId != me && !partners.contains(contact.userId) {
+            partners.append(contact.userId)
+        }
+
+        let created: [String?] = await concurrentMap(partners) { partner in
+            do {
+                if try await repository.existingChat(userId: me, peerUserId: partner) != nil { return nil }
+                return try await repository.createChat(userId: me, peerUserId: partner)
+            } catch {
+                return "failed"
+            }
+        }
+        failed += created.filter { $0 == "failed" }.count
+        let roomIds = created.compactMap { $0 }.filter { $0 != "failed" }
+        return PhoneBookSyncResult(scanned: numbers.count, matched: partners.count, created: roomIds.count, failed: failed, createdRoomIds: roomIds)
+    }
+
+    static func concurrentMap<T: Sendable, R: Sendable>(_ items: [T], _ transform: @escaping @Sendable (T) async -> R) async -> [R] {
+        var results = [R?](repeating: nil, count: items.count)
+        await withTaskGroup(of: (Int, R).self) { group in
+            var next = 0
+            func add() {
+                guard next < items.count else { return }
+                let index = next
+                next += 1
+                group.addTask { (index, await transform(items[index])) }
+            }
+            for _ in 0..<min(concurrency, items.count) { add() }
+            while let (index, value) = await group.next() {
+                results[index] = value
+                add()
+            }
+        }
+        return results.compactMap { $0 }
     }
 }

@@ -201,3 +201,34 @@ struct PresenceTests {
         return []
     }
 }
+
+@Suite("Знакомые из телефонной книги")
+struct PhoneBookSyncTests {
+    @Test("номера нормализуются как поиск, повторы и не номера отбрасываются")
+    func normalize() {
+        #expect(PhoneBookSync.normalize(["8 999 123-45-67", "+7 (999) 123-45-67", "ivan", "9991234568"]) == ["+7 (999) 123-45-67", "+7 (999) 123-45-68"])
+    }
+
+    @Test("находит владельцев, пропускает себя и тех, с кем чат уже есть, считает ошибки")
+    func run() async {
+        let repository = FakeContactsRepository()
+        await repository.setPhoneBook([
+            "+7 (999) 000-00-01": Contact(userId: "u1", name: "Анна", username: "anna"),
+            "+7 (999) 000-00-02": Contact(userId: "u2", name: "Борис", username: "boris"),
+            "+7 (999) 000-00-03": Contact(userId: "me", name: "Я", username: "me"),
+        ], failing: ["+7 (999) 000-00-04"])
+        await repository.setExistingChatPeers(["u2"])
+
+        let result = await PhoneBookSync.run(numbers: ["89990000001", "89990000002", "89990000003", "89990000004", "89990000005"], me: "me", repository: repository)
+
+        #expect(result.scanned == 5)
+        #expect(result.matched == 2)
+        #expect(result.created == 1)
+        #expect(result.failed == 1)
+        #expect(result.createdRoomIds == ["room-new-u1"])
+        #expect(await repository.createdChats == ["u1"])
+        #expect(result.message == "Добавили чатов: 1")
+        #expect(PhoneBookSyncResult(scanned: 1, matched: 1, created: 0, failed: 0, createdRoomIds: []).message == "Все знакомые уже в чатах")
+        #expect(PhoneBookSyncResult(scanned: 1, matched: 0, created: 0, failed: 0, createdRoomIds: []).message == "Знакомых из контактов пока нет")
+    }
+}

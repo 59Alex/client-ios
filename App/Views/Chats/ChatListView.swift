@@ -14,6 +14,8 @@ struct ChatListView: View {
     var groupTools: GroupTools?
     /// Статусы собеседников для точки «в сети» на аватаре.
     var statusOf: (String) -> UserStatus? = { _ in nil }
+    /// Пользователь для приветствий новых чатов из телефонной книги.
+    var myUserId = ""
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -27,7 +29,7 @@ struct ChatListView: View {
                     }
                 }
                 .navigationDestination(for: ChatRoute.self) { route in
-                    ChatScreenContainer(route: route, makeChat: makeChat, groupTools: groupTools)
+                    ChatScreenContainer(route: route, makeChat: makeChat, groupTools: groupTools, myUserId: myUserId)
                 }
         }
         .task { await model.load() }
@@ -61,7 +63,7 @@ struct ChatListView: View {
         case let .loaded(chats):
             List(chats) { chat in
                 NavigationLink(value: ChatRoute(kind: chat.kind, roomId: chat.roomId, title: chat.title)) {
-                    ChatRow(chat: chat, unread: unread.unreadCount(kind: chat.kind, roomId: chat.roomId), status: chat.partnerUserId.flatMap(statusOf))
+                    ChatRow(chat: chat, unread: unread.unreadCount(kind: chat.kind, roomId: chat.roomId), status: chat.partnerUserId.flatMap(statusOf), greeting: chat.preview == nil && !myUserId.isEmpty && SyncGreetings.contains(chat.roomId, userId: myUserId))
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -85,14 +87,17 @@ struct ChatRoute: Hashable, Codable {
 private struct ChatScreenContainer: View {
     @State private var model: ChatModel
     let groupTools: GroupTools?
+    let myUserId: String
 
-    init(route: ChatRoute, makeChat: @MainActor (ChatRoute) -> ChatModel, groupTools: GroupTools?) {
+    init(route: ChatRoute, makeChat: @MainActor (ChatRoute) -> ChatModel, groupTools: GroupTools?, myUserId: String) {
         _model = State(initialValue: makeChat(route))
         self.groupTools = groupTools
+        self.myUserId = myUserId
     }
 
     var body: some View {
         ChatScreen(model: model, groupTools: model.kind == .group ? groupTools : nil)
+            .onAppear { if !myUserId.isEmpty { SyncGreetings.forget(model.roomId, userId: myUserId) } }
     }
 }
 
@@ -113,6 +118,7 @@ private struct ChatRow: View {
     let chat: ChatSummary
     let unread: Int
     var status: UserStatus?
+    var greeting = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -132,7 +138,7 @@ private struct ChatRow: View {
                     }
                 }
                 HStack {
-                    Text(chat.preview?.summaryText ?? "")
+                    Text(greeting ? PhoneBookSync.greeting : chat.preview?.summaryText ?? "")
                         .font(.subheadline)
                         .foregroundStyle(Palette.textSecondary)
                         .lineLimit(1)

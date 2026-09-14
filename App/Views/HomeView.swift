@@ -258,7 +258,7 @@ struct HomeView: View {
     private var section: some View {
         switch navigation.tab {
         case .chats:
-            ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.chatsPath, groupTools: groupTools, statusOf: { contactStatuses[$0] })
+            ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.chatsPath, groupTools: groupTools, statusOf: { contactStatuses[$0] }, myUserId: dependencies.user.userId)
         case .groups:
             ChatListView(model: dependencies.groupChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.groupsPath, onCreateGroup: { isCreateGroupShown = true }, groupTools: groupTools)
         case .rooms:
@@ -283,7 +283,7 @@ struct HomeView: View {
         case .feeds:
             FeedsListView(model: dependencies.feeds, unread: dependencies.unread, makeFeed: dependencies.makeFeed, origin: dependencies.uiOrigin, contacts: groupTools.contacts)
         case .contacts:
-            ContactsView(model: dependencies.contacts, calls: calls, myUsername: dependencies.user.username) { route in
+            ContactsView(model: dependencies.contacts, calls: calls, myUsername: dependencies.user.username, myUserId: dependencies.user.userId, repository: dependencies.contactsRepository, onChatsCreated: { Task { await dependencies.p2pChats.load() } }) { route in
                 navigation.open(route)
             }
         }
