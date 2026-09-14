@@ -88,7 +88,7 @@ final class AppDependencies {
 
     /// Зависимости экранов вошедшего пользователя; живут, пока он не выйдет.
     func makeSignedIn(user: User) -> SignedInDependencies {
-        let status = StatusService(client: statusClient)
+        let status = StatusService(client: statusClient, eventStream: eventStream)
         let connectionErrors = ConnectionErrorsModel(probe: overrides.mediaProbe ?? HTTPMediaServerProbe(rtcUrl: config.rtcWebSocketUrl, transport: transport))
         let usesStubRooms = overrides.makeCallRoom != nil
         let micDenied = overrides.microphoneDenied
