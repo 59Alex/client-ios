@@ -22,6 +22,8 @@ struct ChatScreen: View {
     @State private var isFileImporterShown = false
     @State private var previewURL: URL?
     @State private var isBulkDeleteShown = false
+    @State private var recorder = VoiceRecorder()
+    @State private var isRecordingLocked = false
     @State private var isEmojiShown = false
     @FocusState private var isInputFocused: Bool
     @Environment(\.mediaLoader) private var mediaLoader
@@ -249,7 +251,18 @@ struct ChatScreen: View {
         .overlay(alignment: .top) { Rectangle().fill(Palette.divider).frame(height: 1) }
     }
 
+    @ViewBuilder
     private var inputRow: some View {
+        if recorder.isActive && isRecordingLocked {
+            VoiceRecordingBar(recorder: recorder) { data in
+                Task { await model.sendVoiceMessage(data: data) }
+            }
+        } else {
+            composerRow
+        }
+    }
+
+    private var composerRow: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Menu {
                 Button("Фото или видео", systemImage: "photo.on.rectangle") { isPhotoPickerShown = true }
@@ -265,6 +278,18 @@ struct ChatScreen: View {
             .accessibilityLabel("Прикрепить")
             .accessibilityIdentifier("chat.attach")
 
+            if recorder.isActive {
+                HStack(spacing: 8) {
+                    Circle().fill(Palette.danger).frame(width: 10, height: 10)
+                    Text("\(VoiceMessagePlayer.format(recorder.elapsed)) · отпустите, чтобы отправить")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(Palette.textSecondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(Palette.chrome, in: RoundedRectangle(cornerRadius: 22))
+            } else {
             TextField("Сообщение", text: Bindable(model).draft, axis: .vertical)
                 .lineLimit(1...6)
                 .focused($isInputFocused)
@@ -276,6 +301,7 @@ struct ChatScreen: View {
                 .overlay { RoundedRectangle(cornerRadius: 22).strokeBorder(isInputFocused ? Palette.accent : .clear) }
                 .disabled(model.isPartnerBanned)
                 .accessibilityIdentifier("chat.input")
+            }
 
             Button { isEmojiShown = true } label: {
                 Image(systemName: "face.smiling")
@@ -292,20 +318,27 @@ struct ChatScreen: View {
                     .presentationDetents([.medium, .large])
             }
 
-            Button {
-                Task { await model.send() }
-            } label: {
-                Image(systemName: "arrow.up")
-                    .font(.body.weight(.bold))
-                    .frame(width: 44, height: 44)
-                    .foregroundStyle(Palette.onAccent)
-                    .background(Palette.accent, in: Circle())
+            if model.canSend || !model.canAttach {
+                Button {
+                    Task { await model.send() }
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.body.weight(.bold))
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(Palette.onAccent)
+                        .background(Palette.accent, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.canSend)
+                .opacity(model.canSend ? 1 : 0.45)
+                .accessibilityLabel("Отправить")
+                .accessibilityIdentifier("chat.send")
+            } else {
+                VoiceRecordButton(recorder: recorder, isLocked: $isRecordingLocked) { data in
+                    Task { await model.sendVoiceMessage(data: data) }
+                }
+                .disabled(model.isPartnerBanned)
             }
-            .buttonStyle(.plain)
-            .disabled(!model.canSend)
-            .opacity(model.canSend ? 1 : 0.45)
-            .accessibilityLabel("Отправить")
-            .accessibilityIdentifier("chat.send")
         }
         .padding(.horizontal, 12)
         .overlay(alignment: .top) {
@@ -568,6 +601,9 @@ private struct MessageRow: View {
                     .foregroundStyle(Palette.messageName)
             }
             ForEach(message.attachments, id: \.self) { attachment in
+                if attachment.kind == .voiceMessage {
+                    VoiceMessagePlayer(attachment: attachment, isOwn: isOwn)
+                } else {
                 Button { onOpenAttachment(attachment) } label: {
                     if attachment.kind == .image {
                         RemoteImage(key: attachment.previewUrlS3 ?? attachment.urlS3) {
@@ -581,6 +617,7 @@ private struct MessageRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(attachment.displayName)
+                }
             }
             if !message.text.isEmpty {
                 Text(FormattedMessageText.attributed(message))

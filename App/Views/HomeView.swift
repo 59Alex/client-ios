@@ -84,6 +84,7 @@ struct HomeView: View {
         ZStack {
             shell
                 .environment(\.mediaLoader, dependencies.mediaLoader)
+                .environment(\.fileAPI, dependencies.files)
                 .environment(\.greetingLookup, { [settings = dependencies.settings] userId in
                     try? await settings.greeting(userId: userId)
                 })

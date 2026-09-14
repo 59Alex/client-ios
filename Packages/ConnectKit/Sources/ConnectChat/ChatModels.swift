@@ -41,12 +41,13 @@ public struct ChatAttachment: Codable, Sendable, Equatable, Hashable {
         let lowerName = name.lowercased()
         let audio: Set = ["mp3", "wav", "ogg", "flac", "aac", "webm"]
         let video: Set = ["mp4", "mov", "avi", "mkv", "webm"]
-        if lowerName.hasPrefix("voice-message-"), audio.contains(ext) { return .voiceMessage }
+        // Голосовые iOS и Safari пишутся в AAC: `.m4a` и `.mp4` тоже голосовые при таком имени.
+        if lowerName.hasPrefix("voice-message-"), audio.contains(ext) || ext == "m4a" || ext == "mp4" { return .voiceMessage }
         if lowerName.hasPrefix("video-message-"), video.contains(ext) { return .videoMessage }
         switch ext {
         case "jpg", "jpeg", "png", "gif", "webp", "svg": return .image
         case _ where video.contains(ext): return .video
-        case _ where audio.contains(ext): return .audio
+        case _ where audio.contains(ext) || ext == "m4a": return .audio
         case "pdf": return .pdf
         case "doc", "docx", "rtf", "txt": return .document
         case "xls", "xlsx", "csv": return .spreadsheet

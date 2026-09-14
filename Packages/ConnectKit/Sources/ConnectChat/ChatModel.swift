@@ -258,6 +258,30 @@ public final class ChatModel {
         }
     }
 
+    /// Имя голосового как в `useChatRecorder.ts`: `voice-message-2026-09-14T10-00-00-000Z.m4a`.
+    public static func voiceFilename(at date: Date, extension ext: String = "m4a") -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        let stamp = formatter.string(from: date).replacingOccurrences(of: ":", with: "-").replacingOccurrences(of: ".", with: "-")
+        return "voice-message-\(stamp).\(ext)"
+    }
+
+    /// Голосовое уходит сразу: загрузка в `file-chat` и сообщение без текста с одним вложением.
+    @discardableResult
+    public func sendVoiceMessage(data: Data) async -> Bool {
+        guard let files, !isPartnerBanned, !data.isEmpty else { return false }
+        let filename = Self.voiceFilename(at: now())
+        do {
+            let uploaded = try await files.upload(data: data, filename: filename, mimeType: "audio/mp4", bucket: .chat, key: roomId, userId: me.userId, username: me.username)
+            let attachment = ChatAttachment(urlS3: uploaded.urlS3, name: uploaded.name, extension: uploaded.extension)
+            await post(text: "", attachments: [attachment])
+            return messages.first { $0.attachments == [attachment] }?.delivery == .sent
+        } catch {
+            return false
+        }
+    }
+
     /// Приветствие в пустом личном чате: картинка каждый раз загружается в свою галерею
     /// и уходит сообщением без текста (`ChatGreeting.tsx`).
     public func sendGreeting(data: Data, filename: String, mimeType: String) async -> Bool {
@@ -325,6 +349,11 @@ public final class ChatModel {
         let attachments = uploadedAttachments
         draft = ""
         pendingAttachments.removeAll()
+        await post(text: text, attachments: attachments)
+    }
+
+    /// Локальное сообщение сразу в ленте, затем доставка; черновик и вложения ввода не трогаются.
+    private func post(text: String, attachments: [ChatAttachment]) async {
         let timestamp = Int64(now().timeIntervalSince1970 * 1000)
         let localId = "local-\(kind.localIdPrefix)-\(timestamp)-\(me.userId)"
         let message = ChatMessage(
