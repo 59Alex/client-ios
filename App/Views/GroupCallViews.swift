@@ -7,6 +7,10 @@ struct GroupCallView: View {
     let model: GroupCallModel
     let names: [String: String]
     var onMinimize: (() -> Void)?
+    var meetings: (any MeetingsAPI)?
+    var origin: URL?
+
+    @State private var isGuestLinkShown = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,8 +67,29 @@ struct GroupCallView: View {
                         .frame(width: 44, height: 44)
                         .background(Palette.surface, in: Circle())
                 }
+                if let meetings, let origin, case .active = model.phase {
+                    Button {
+                        Task {
+                            await model.createGuestLink(api: meetings, origin: origin)
+                            isGuestLinkShown = true
+                        }
+                    } label: {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.headline)
+                            .foregroundStyle(Palette.textPrimary)
+                            .frame(width: 44, height: 44)
+                            .background(Palette.surface, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Пригласить гостей по ссылке")
+                    .accessibilityIdentifier("group.call.guestLink")
+                }
             }
             .padding(8)
+        }
+        .sheet(isPresented: $isGuestLinkShown) {
+            GuestLinkSheet(link: model.guestLink, error: model.guestLinkError)
+                .presentationDetents([.medium])
         }
         .background(Palette.canvas.ignoresSafeArea())
     }
@@ -181,5 +206,49 @@ struct RoundControl: View {
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityIdentifier(identifier)
+    }
+}
+
+/// Ссылка для гостей (`MeetingInviteButton.tsx`): гость входит по ней сразу, пока идёт звонок, до 4 часов.
+private struct GuestLinkSheet: View {
+    let link: String?
+    let error: String?
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                if let link, error == nil {
+                    Text("Гости войдут в звонок по ссылке без регистрации. Ссылка действует, пока идёт звонок, но не дольше 4 часов.")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.textSecondary)
+                    Text(link)
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(Palette.textPrimary)
+                        .textSelection(.enabled)
+                        .padding(12)
+                        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.button))
+                        .accessibilityIdentifier("group.call.guestLink.value")
+                    if let url = URL(string: link) {
+                        ShareLink(item: url) {
+                            Label("Отправить ссылку", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                    }
+                } else {
+                    Label(error ?? "Не удалось создать ссылку", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(Palette.danger)
+                        .accessibilityIdentifier("group.call.guestLink.error")
+                }
+                Spacer()
+            }
+            .padding(20)
+            .background(Palette.canvas)
+            .navigationTitle("Гости")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } } }
+        }
     }
 }

@@ -16,6 +16,24 @@ public final class GroupCallModel {
     public private(set) var phase: Phase = .idle
     public private(set) var callId: String?
     public private(set) var groupChatId: String?
+    /// Ссылка для гостей, пока идёт этот звонок.
+    public private(set) var guestLink: String?
+    public private(set) var guestLinkError: String?
+
+    /// Ведущий создаёт гостевую ссылку (`MeetingInviteButton.tsx`); права проверяет сервер.
+    public func createGuestLink(api meetings: any MeetingsAPI, origin: URL) async {
+        guard let callId, let groupChatId else { return }
+        do {
+            let invitation = try await meetings.createInvitation(groupId: groupChatId, callId: callId)
+            guestLink = MeetingLinks.url(origin: origin, code: invitation.code).absoluteString
+            guestLinkError = nil
+        } catch let error as MeetingError {
+            guestLinkError = error.message
+        } catch {
+            guestLinkError = MeetingError.other.message
+        }
+    }
+
     /// Своя камера отдельным подключением к комнате группового звонка.
     public let camera: CameraShare
     public private(set) var title = ""
@@ -407,6 +425,8 @@ public final class GroupCallModel {
         phase = .idle
         callId = nil
         groupChatId = nil
+        guestLink = nil
+        guestLinkError = nil
         callerUserId = nil
         title = ""
         rosterUserIds = []
