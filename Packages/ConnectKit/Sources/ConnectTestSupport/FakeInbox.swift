@@ -24,6 +24,11 @@ public actor FakeInboxAPI: InboxAPI {
     public func setDecisionDelayPolls(_ value: Int) { decisionDelayPolls = value }
     public func setFailCreate(_ value: Bool) { failCreate = value }
 
+    /// Новое уведомление, как пришло бы с сервера.
+    public func deliver(_ notification: InboxNotification) {
+        notificationsList.insert(notification, at: 0)
+    }
+
     public func notifications(before: Int64?, limit: Int) async throws -> [InboxNotification] {
         let sorted = notificationsList.sorted { $0.id > $1.id }
         let filtered = before.map { id in sorted.filter { $0.id < id } } ?? sorted

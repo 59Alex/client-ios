@@ -49,6 +49,7 @@ final class AppDependencies {
         var roomVoice: (any RoomVoiceAPI)?
         var appearance: (any AppearanceAPI)?
         var appearanceStore: (any AppearanceStore)?
+        var presence: (any PresenceAPI)?
     }
 
     init(
@@ -118,6 +119,8 @@ final class AppDependencies {
             unread: unread,
             inbox: inbox,
             notifications: NotificationCenterModel(api: inbox),
+            toasts: ToastsModel(api: inbox),
+            presence: overrides.presence ?? RemotePresenceAPI(client: statusClient, eventStream: eventStream),
             invitations: InvitationsModel(me: user.userId, api: inbox),
             rooms: RoomsModel(me: user.userId, api: roomsAPI),
             feeds: FeedsModel(me: user.userId, api: roomsAPI),
@@ -180,7 +183,8 @@ final class AppDependencies {
                     groupCalls: UITestStub.makeGroupCallAPI(arguments: arguments),
                     roomVoice: FakeRoomVoiceAPI(connected: [ChannelParticipantEvent(userId: "qa-2", channelId: "channel-voice", muted: true, kind: .connect)]),
                     appearance: FakeAppearanceAPI(preferences: UITestStub.appearance(arguments: arguments)),
-                    appearanceStore: MemoryAppearanceStore(UITestStub.appearance(arguments: arguments))
+                    appearanceStore: MemoryAppearanceStore(UITestStub.appearance(arguments: arguments)),
+                    presence: FakePresenceAPI(snapshot: [PresenceUpdate(userId: "qa-2", status: .online)])
                 )
             )
         }
@@ -206,6 +210,8 @@ final class SignedInDependencies {
     let unread: UnreadModel
     let inbox: any InboxAPI
     let notifications: NotificationCenterModel
+    let toasts: ToastsModel
+    let presence: any PresenceAPI
     let invitations: InvitationsModel
     let rooms: RoomsModel
     let feeds: FeedsModel
@@ -236,6 +242,8 @@ final class SignedInDependencies {
         unread: UnreadModel,
         inbox: any InboxAPI,
         notifications: NotificationCenterModel,
+        toasts: ToastsModel,
+        presence: any PresenceAPI,
         invitations: InvitationsModel,
         rooms: RoomsModel,
         feeds: FeedsModel,
@@ -265,6 +273,8 @@ final class SignedInDependencies {
         self.unread = unread
         self.inbox = inbox
         self.notifications = notifications
+        self.toasts = toasts
+        self.presence = presence
         self.invitations = invitations
         self.rooms = rooms
         self.feeds = feeds

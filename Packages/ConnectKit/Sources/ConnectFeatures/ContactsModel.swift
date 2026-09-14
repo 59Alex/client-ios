@@ -162,19 +162,42 @@ public final class ContactsModel {
     public private(set) var state: State = .loading
     public var searchText = ""
     public private(set) var searchResult: SearchResult = .idle
+    public var sort: ContactSort = .lastSeen {
+        didSet { if sort != oldValue, case let .loaded(contacts) = state { state = .loaded(Self.sorted(contacts, by: sort)) } }
+    }
 
     private let userId: String
     private let repository: any ContactsRepository
+    private let now: @Sendable () -> Date
+    /// Скрытые в карточке профили не получают статус из снимка.
+    private var hiddenInCard: Set<String> = []
 
-    public init(userId: String, repository: any ContactsRepository) {
+    public init(userId: String, repository: any ContactsRepository, now: @escaping @Sendable () -> Date = { Date() }) {
         self.userId = userId
         self.repository = repository
+        self.now = now
+    }
+
+    /// Id контактов для подписки на статусы, без себя, по порядку.
+    public var presenceUserIds: [String] {
+        Array(Set(loadedContacts.map(\.userId)).subtracting([userId])).sorted()
     }
 
     public func load() async {
         if case .loaded = state {} else { state = .loading }
         do {
-            state = .loaded(Self.sorted(try await repository.contacts(of: userId)))
+            let fetched = try await repository.contacts(of: userId)
+            hiddenInCard = Set(fetched.filter { $0.status == .hidden }.map(\.userId))
+            let live = Dictionary(loadedContacts.map { ($0.userId, $0) }, uniquingKeysWith: { first, _ in first })
+            // Живой статус новее карточки: перечитанный список его не откатывает.
+            let merged = fetched.map { contact in
+                guard let known = live[contact.userId], liveUserIds.contains(contact.userId) else { return contact }
+                var updated = contact
+                updated.status = known.status
+                updated.lastSeenAt = known.lastSeenAt ?? contact.lastSeenAt
+                return updated
+            }
+            state = .loaded(Self.sorted(merged, by: sort))
         } catch is CancellationError {
             return
         } catch {
@@ -215,7 +238,7 @@ public final class ContactsModel {
         guard contact.userId != userId, !isContact(contact) else { return false }
         do {
             try await repository.addContact(userId: userId, contactUserId: contact.userId)
-            state = .loaded(Self.sorted(loadedContacts + [contact]))
+            state = .loaded(Self.sorted(loadedContacts + [contact], by: sort))
             searchText = ""
             searchResult = .idle
             return true
@@ -261,17 +284,78 @@ public final class ContactsModel {
         return []
     }
 
-    public static func sorted(_ contacts: [Contact]) -> [Contact] {
-        contacts.sorted { lhs, rhs in
-            let lhsOnline = lhs.status == .online
-            let rhsOnline = rhs.status == .online
-            if lhsOnline != rhsOnline { return lhsOnline }
-            switch (lhs.lastSeenAt, rhs.lastSeenAt) {
-            case let (l?, r?) where l != r: return l > r
-            case (.some, nil): return true
-            case (nil, .some): return false
-            default: return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+    /// Пользователи, получившие живой кадр: снимок их больше не перезаписывает.
+    private var liveUserIds: Set<String> = []
+
+    /// Статусы контактов: снимок и живой поток с переподключением через 1,5 с, пока задача не отменена.
+    public func watchPresence(api: any PresenceAPI, retryDelay: Duration = .milliseconds(1500)) async {
+        let userIds = presenceUserIds
+        guard !userIds.isEmpty else { return }
+        while !Task.isCancelled {
+            liveUserIds = []
+            let snapshot = Task { try await api.snapshot(userIds: userIds) }
+            let snapshotApplier = Task { @MainActor in
+                guard let updates = try? await snapshot.value else { return }
+                for update in updates where !self.liveUserIds.contains(update.userId) && !self.hiddenInCard.contains(update.userId) {
+                    self.apply(update)
+                }
+            }
+            do {
+                for try await update in api.events(userIds: userIds) {
+                    liveUserIds.insert(update.userId)
+                    apply(update)
+                }
+            } catch {
+                // Переподключение ниже.
+            }
+            snapshotApplier.cancel()
+            do {
+                try await Task.sleep(for: retryDelay)
+            } catch {
+                return
             }
         }
+    }
+
+    /// Уход из сети при открытом приложении даёт «был(а) только что» (`useLiveLastSeen.ts`).
+    public func apply(_ update: PresenceUpdate) {
+        guard case var .loaded(contacts) = state, let index = contacts.firstIndex(where: { $0.userId == update.userId }) else { return }
+        let previous = contacts[index].status
+        guard previous != update.status else { return }
+        contacts[index].status = update.status
+        if previous == .online, update.status == .offline {
+            contacts[index].lastSeenAt = now()
+        }
+        state = .loaded(Self.sorted(contacts, by: sort))
+    }
+
+    public static func sorted(_ contacts: [Contact], by sort: ContactSort = .lastSeen) -> [Contact] {
+        switch sort {
+        case .name:
+            return contacts.sorted { sortName($0).compare(sortName($1), locale: russian) == .orderedAscending }
+        case .lastSeen:
+            return contacts.sorted { lhs, rhs in
+                let lhsRank = rank(lhs)
+                let rhsRank = rank(rhs)
+                if lhsRank != rhsRank { return lhsRank < rhsRank }
+                if lhsRank == 1, let l = lhs.lastSeenAt, let r = rhs.lastSeenAt, l != r { return l > r }
+                return sortName(lhs).compare(sortName(rhs), locale: russian) == .orderedAscending
+            }
+        }
+    }
+
+    private static let russian = Locale(identifier: "ru_RU")
+
+    /// В сети, затем с известным временем визита, затем скрытые и неизвестные.
+    private static func rank(_ contact: Contact) -> Int {
+        if contact.status == .online { return 0 }
+        if contact.status == .offline, contact.lastSeenAt != nil { return 1 }
+        return 2
+    }
+
+    /// Имя без пробелов по краям, иначе логин без «@», в нижнем регистре.
+    static func sortName(_ contact: Contact) -> String {
+        let name = contact.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (name.isEmpty ? String(contact.username.drop { $0 == "@" }) : name).lowercased()
     }
 }

@@ -9,6 +9,9 @@ struct ContactsView: View {
     let myUsername: String
     let onOpenChat: (ChatRoute) -> Void
 
+    /// Ключ веб-клиента для выбранного порядка.
+    static let sortKey = "connect.contacts.sort.v1"
+
     @State private var profileContact: Contact?
     @State private var actionError: String?
 
@@ -23,8 +26,29 @@ struct ContactsView: View {
                 .toolbarBackground(.visible, for: .navigationBar)
                 .searchable(text: Bindable(model).searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Найти контакт")
                 .onSubmit(of: .search) { Task { await model.search() } }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            Picker("Сортировка", selection: Bindable(model).sort) {
+                                ForEach(ContactSort.allCases) { Text($0.title).tag($0) }
+                            }
+                        } label: {
+                            Label("Сортировка", systemImage: "arrow.up.arrow.down")
+                                .labelStyle(.titleAndIcon)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Palette.textSecondary)
+                        }
+                        .accessibilityIdentifier("contacts.sort")
+                    }
+                }
         }
-        .task { await model.load() }
+        .task {
+            if let raw = UserDefaults.standard.string(forKey: Self.sortKey), let sort = ContactSort(rawValue: raw) { model.sort = sort }
+            await model.load()
+        }
+        .onChange(of: model.sort) { _, sort in
+            UserDefaults.standard.set(sort.rawValue, forKey: Self.sortKey)
+        }
         .sheet(item: $profileContact) { contact in
             ContactProfileSheet(contact: contact, model: model)
         }
@@ -184,7 +208,7 @@ private struct ContactProfileSheet: View {
                             .foregroundStyle(Palette.textSecondary)
                         Text(PresenceText.describe(shown))
                             .font(.subheadline)
-                            .foregroundStyle(shown.status == .online ? Palette.accent : Palette.textSecondary)
+                            .foregroundStyle(shown.status == .online ? Palette.success : Palette.textSecondary)
                     }
                     .accessibilityElement(children: .combine)
 
@@ -236,7 +260,7 @@ private struct ContactRow: View {
                     .lineLimit(1)
                 Text(PresenceText.describe(contact))
                     .font(.subheadline)
-                    .foregroundStyle(contact.status == .online ? Palette.accent : Palette.textSecondary)
+                    .foregroundStyle(contact.status == .online ? Palette.success : Palette.textSecondary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -301,6 +325,8 @@ enum PresenceText {
         case .hidden: return "скрыт"
         case .offline:
             guard let lastSeen = contact.lastSeenAt else { return "не в сети" }
+            // Уход из сети, замеченный живым потоком, как `useLiveLastSeen.ts`.
+            if abs(now.timeIntervalSince(lastSeen)) < 60 { return "был(а) только что" }
             return "был(а) в сети " + relative(lastSeen, now: now)
         }
     }
