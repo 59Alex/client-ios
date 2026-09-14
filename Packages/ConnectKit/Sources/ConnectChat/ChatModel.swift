@@ -352,6 +352,98 @@ public final class ChatModel {
         }
     }
 
+    // MARK: - Выделение и оформление
+
+    /// Режим «Выделить» (`Chat.tsx`): выходит сам, когда ничего не выбрано.
+    public private(set) var selectedIds: Set<String> = []
+    public var isSelecting: Bool { !selectedIds.isEmpty }
+
+    public func toggleSelection(_ messageId: String) {
+        guard let message = messages.first(where: { $0.id == messageId }), message.delivery == .sent, !message.id.hasPrefix("local-") else { return }
+        if selectedIds.contains(messageId) { selectedIds.remove(messageId) } else { selectedIds.insert(messageId) }
+    }
+
+    public func clearSelection() {
+        selectedIds = []
+    }
+
+    /// Удалять можно только свои выбранные сообщения.
+    public var canDeleteSelection: Bool {
+        !selectedIds.isEmpty && messages.filter { selectedIds.contains($0.id) }.allSatisfy(isOwn)
+    }
+
+    /// Удаление выбранных: по запросу на сообщение параллельно, как `Promise.all` веба. Возвращает число неудач.
+    @discardableResult
+    public func deleteSelected() async -> Int {
+        let ids = Array(selectedIds)
+        let results = await withTaskGroup(of: (String, Bool).self) { group in
+            for id in ids {
+                group.addTask { [api] in
+                    do {
+                        try await api.delete(messageId: id)
+                        return (id, true)
+                    } catch {
+                        return (id, false)
+                    }
+                }
+            }
+            var collected: [(String, Bool)] = []
+            for await result in group { collected.append(result) }
+            return collected
+        }
+        var failures = 0
+        for (id, ok) in results {
+            if ok {
+                timeline.remove(id: id)
+                selectedIds.remove(id)
+                await signal(.delete(messageId: id))
+            } else {
+                failures += 1
+            }
+        }
+        return failures
+    }
+
+    public enum TextStyle: Sendable, Equatable {
+        case bold
+        /// Кнопка «подчеркнуть» веба отправляет `SKINY`.
+        case underline
+        case marker(color: String)
+
+        public static let markerColor = "#ffe066"
+    }
+
+    /// Оформляет выбранные сообщения целиком (`0…длина-1` в UTF-16) или заданный диапазон одного сообщения.
+    @discardableResult
+    public func format(_ style: TextStyle, range: ClosedRange<Int>? = nil) async -> Bool {
+        let targets = messages.filter { selectedIds.contains($0.id) && !$0.text.isEmpty }
+        guard !targets.isEmpty else { return false }
+        var allSucceeded = true
+        for message in targets {
+            let length = message.text.utf16.count
+            let bounds = (range.flatMap { targets.count == 1 ? $0 : nil }) ?? 0...(length - 1)
+            let from = max(0, min(bounds.lowerBound, length - 1))
+            let to = max(from, min(bounds.upperBound, length - 1))
+            let draft: TextDiapason = switch style {
+            case .bold: .weight(WeightRange(id: nil, from: from, to: to, state: .bold))
+            case .underline: .weight(WeightRange(id: nil, from: from, to: to, state: .underline))
+            case let .marker(color): .marker(MarkerRange(id: nil, from: from, to: to, color: color))
+            }
+            do {
+                let id = try await api.addDiapason(messageId: message.id, diapason: draft)
+                let saved: TextDiapason = switch draft {
+                case let .weight(value): .weight(WeightRange(id: id, from: value.from, to: value.to, state: value.state))
+                case let .marker(value): .marker(MarkerRange(id: id, from: value.from, to: value.to, color: value.color))
+                }
+                timeline.apply(saved, to: message.id)
+                await signal(.edit(messageId: message.id, diapason: saved))
+            } catch {
+                allSucceeded = false
+            }
+        }
+        return allSucceeded
+    }
+
     /// Сообщения собеседников, показанные на экране, отмечаются прочитанными.
     public func markVisible(_ messageIds: [String]) {
         let others = messages.filter { messageIds.contains($0.id) && !isOwn($0) && $0.callSummary == nil }.map(\.id)
