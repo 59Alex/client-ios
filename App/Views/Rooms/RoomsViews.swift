@@ -870,8 +870,12 @@ private struct FeedAddContactsSheet: View {
     @State private var added: Set<String> = []
 
     private var candidates: [Contact] {
-        let list = model.memberList
-        let known = Set(([list?.admin].compactMap { $0 } + (list?.moderators ?? []) + (list?.subscribers ?? []) + (list?.bannedUsers ?? [])).map(\.userId))
+        var known = Set<String>()
+        if let list = model.memberList {
+            let members: [FeedMembers.Member] = list.moderators + list.subscribers + list.bannedUsers
+            known = Set(members.map(\.userId))
+            if let admin = list.admin { known.insert(admin.userId) }
+        }
         return contacts.filter { !known.contains($0.userId) || added.contains($0.userId) }
     }
 
