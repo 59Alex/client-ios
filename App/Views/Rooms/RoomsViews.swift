@@ -464,11 +464,15 @@ struct FeedsListView: View {
     let model: FeedsModel
     let unread: UnreadModel
     let makeFeed: @MainActor (String) -> FeedModel
+    let origin: URL
+    let contacts: () -> [Contact]
 
     @State private var isCreateShown = false
+    @State private var isJoinShown = false
+    @State private var path: [String] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if !model.loaded && !model.failed {
                     ProgressView().controlSize(.large)
@@ -505,10 +509,24 @@ struct FeedsListView: View {
             .background(Palette.canvas)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .bottom, alignment: .leading) {
-                CreateButton(label: "Создать канал", identifier: "feeds.create") { isCreateShown = true }
+                HStack(spacing: 0) {
+                    CreateButton(label: "Создать канал", identifier: "feeds.create") { isCreateShown = true }
+                    Button { isJoinShown = true } label: {
+                        Label("По ссылке", systemImage: "link")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Palette.textPrimary)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 44)
+                            .background(Palette.panel, in: RoundedRectangle(cornerRadius: Radius.button))
+                            .overlay { RoundedRectangle(cornerRadius: Radius.button).strokeBorder(Palette.divider) }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Подписаться по ссылке")
+                    .accessibilityIdentifier("feeds.join")
+                }
             }
             .navigationDestination(for: String.self) { feedId in
-                FeedScreen(model: makeFeed(feedId), title: model.feeds.first { $0.id == feedId }?.name ?? "Канал", unread: unread) {
+                FeedScreen(model: makeFeed(feedId), title: model.feeds.first { $0.id == feedId }?.name ?? "Канал", unread: unread, origin: origin, contacts: contacts) {
                     Task { await model.load() }
                 }
             }
@@ -519,6 +537,17 @@ struct FeedsListView: View {
                 await model.create(name: name)
             }
         }
+        .sheet(isPresented: $isJoinShown) {
+            TextPromptSheet(title: "Подписаться по ссылке", placeholder: "Ссылка-приглашение в канал", actionTitle: "Подписаться", identifier: "feeds.joinLink") { link in
+                switch await model.join(link: link) {
+                case let .success(feedId):
+                    path = [feedId]
+                    return nil
+                case let .failure(error):
+                    return error.message
+                }
+            }
+        }
     }
 }
 
@@ -526,11 +555,17 @@ private struct FeedScreen: View {
     @State var model: FeedModel
     let title: String
     let unread: UnreadModel
+    let origin: URL
+    let contacts: () -> [Contact]
     let onChanged: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var members: FeedMembers?
     @State private var isMembersShown = false
+    @State private var commentsPostId: CommentsTarget?
+
+    private struct CommentsTarget: Identifiable {
+        let id: String
+    }
     @State private var confirmDelete = false
     @State private var isActionsShown = false
 
@@ -561,15 +596,29 @@ private struct FeedScreen: View {
                                 if !post.text.isEmpty {
                                     Text(post.text).foregroundStyle(Palette.textPrimary).textSelection(.enabled)
                                 }
-                                Text("\(ChatDates.listTime(post.createdAt)) · \(ChatDates.messageTime(post.createdAt))")
-                                    .font(.caption).foregroundStyle(Palette.textSecondary)
+                                HStack(spacing: 12) {
+                                    Text("\(ChatDates.listTime(post.createdAt)) · \(ChatDates.messageTime(post.createdAt))")
+                                    if let views = post.uniqueViewsCount {
+                                        Label("\(views)", systemImage: "eye").accessibilityLabel("Просмотров: \(views)")
+                                    }
+                                    Spacer()
+                                    Button { commentsPostId = CommentsTarget(id: post.id) } label: {
+                                        Label("\(post.commentsCount ?? 0)", systemImage: "bubble.left")
+                                            .frame(minHeight: 32)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Комментарии: \(post.commentsCount ?? 0)")
+                                    .accessibilityIdentifier("feed.comments.\(post.id)")
+                                }
+                                .font(.caption).foregroundStyle(Palette.textSecondary)
                             }
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.panel))
                             .overlay { RoundedRectangle(cornerRadius: Radius.panel).strokeBorder(Palette.border) }
                             .id(post.id)
-                            .accessibilityElement(children: .combine)
+                            .onAppear { model.markViewed(post.id) }
+                            .accessibilityElement(children: .contain)
                         }
                     }
                     .padding(12)
@@ -591,12 +640,7 @@ private struct FeedScreen: View {
             }
         }
         .confirmationDialog("Канал", isPresented: $isActionsShown) {
-            Button("Участники") {
-                Task {
-                    members = await model.members()
-                    isMembersShown = true
-                }
-            }
+            Button("Участники") { isMembersShown = true }
             if model.canUnsubscribe {
                 Button("Отписаться") { Task { await model.setSubscribed(false); onChanged() } }
             }
@@ -607,7 +651,10 @@ private struct FeedScreen: View {
         .task { await model.load() }
         .task(id: summaryStamp) { await model.refresh() }
         .sheet(isPresented: $isMembersShown) {
-            FeedMembersSheet(members: members)
+            FeedMembersSheet(model: model, origin: origin, contacts: contacts())
+        }
+        .sheet(item: $commentsPostId, onDismiss: { Task { await model.refresh() } }) { target in
+            PostCommentsSheet(model: model.commentsModel(postId: target.id))
         }
         .confirmationDialog("Удалить канал?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
@@ -659,30 +706,272 @@ private struct FeedScreen: View {
     }
 }
 
+/// Участники канала с модерацией (`PostFeedMembersList.tsx`), приглашение ссылкой и из контактов.
 private struct FeedMembersSheet: View {
-    let members: FeedMembers?
+    let model: FeedModel
+    let origin: URL
+    let contacts: [Contact]
+
     @Environment(\.dismiss) private var dismiss
+    @State private var selected: MemberAction?
+    @State private var moderatorCandidate: FeedMembers.Member?
+    @State private var isContactsShown = false
+
+    private enum Section: String {
+        case moderator, subscriber, banned
+    }
+
+    private struct MemberAction: Identifiable {
+        let member: FeedMembers.Member
+        let section: Section
+        var id: String { "\(section.rawValue):\(member.userId)" }
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                if let admin = members?.admin {
-                    Section("Владелец") { Text("@\(admin.username)") }
+                SwiftUI.Section {
+                    ShareLink(item: InviteLinks.feedURL(origin: origin, feedId: model.feedId)) {
+                        Label("Пригласительная ссылка", systemImage: "link")
+                    }
+                    .accessibilityIdentifier("feed.members.link")
+                    Button { isContactsShown = true } label: {
+                        Label("Добавить из контактов", systemImage: "person.badge.plus")
+                    }
+                    .accessibilityIdentifier("feed.members.addContacts")
                 }
-                if let moderators = members?.moderators, !moderators.isEmpty {
-                    Section("Модераторы") { ForEach(moderators) { Text("@\($0.username)") } }
+                .listRowBackground(Palette.surface)
+
+                if let admin = model.memberList?.admin {
+                    SwiftUI.Section("Владелец") { Text("@\(admin.username)").foregroundStyle(Palette.textPrimary) }
+                        .listRowBackground(Palette.surface)
                 }
-                Section("Подписчики · \(members?.subscribers.count ?? 0)") {
-                    ForEach(members?.subscribers ?? []) { Text("@\($0.username)") }
-                }
-                if let banned = members?.bannedUsers, !banned.isEmpty {
-                    Section("Заблокированы") { ForEach(banned) { Text("@\($0.username)") } }
+                memberSection("Модераторы", members: model.visibleModerators, section: .moderator, actionable: model.canAssignModerators || model.canBan)
+                memberSection("Подписчики", members: model.visibleSubscribers, section: .subscriber, actionable: model.canAssignModerators || model.canBan)
+                memberSection("Заблокированы", members: model.memberList?.bannedUsers ?? [], section: .banned, actionable: model.canUnban)
+
+                if let error = model.moderationError {
+                    Text(error).foregroundStyle(Palette.danger).listRowBackground(Color.clear)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Palette.canvas)
             .navigationTitle("Участники")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } } }
+            .confirmationDialog(selected.map { "@\($0.member.username)" } ?? "", isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } }), titleVisibility: .visible, presenting: selected) { action in
+                switch action.section {
+                case .moderator:
+                    if model.canAssignModerators {
+                        Button("Снять модератора") { Task { await model.removeModerator(action.member.userId) } }
+                    }
+                    if model.canBan {
+                        Button("Выдать бан", role: .destructive) { Task { await model.setBanned(true, userId: action.member.userId) } }
+                    }
+                case .subscriber:
+                    if model.canAssignModerators {
+                        Button("Сделать модератором") { moderatorCandidate = action.member }
+                    }
+                    if model.canBan {
+                        Button("Выдать бан", role: .destructive) { Task { await model.setBanned(true, userId: action.member.userId) } }
+                    }
+                case .banned:
+                    if model.canUnban {
+                        Button("Разблокировать") { Task { await model.setBanned(false, userId: action.member.userId) } }
+                    }
+                }
+            }
+            .sheet(item: $moderatorCandidate) { member in
+                ModeratorPrivilegesSheet(username: member.username) { privileges in
+                    await model.makeModerator(member.userId, privileges: privileges)
+                }
+            }
+            .sheet(isPresented: $isContactsShown) {
+                FeedAddContactsSheet(model: model, contacts: contacts)
+            }
         }
+        .task { await model.loadMembers() }
+    }
+
+    @ViewBuilder
+    private func memberSection(_ title: String, members: [FeedMembers.Member], section: Section, actionable: Bool) -> some View {
+        if !members.isEmpty {
+            SwiftUI.Section("\(title) · \(members.count)") {
+                ForEach(members) { member in
+                    Button {
+                        if actionable { selected = MemberAction(member: member, section: section) }
+                    } label: {
+                        HStack {
+                            Avatar(name: member.username, size: 32)
+                            Text("@\(member.username)").foregroundStyle(Palette.textPrimary)
+                            Spacer()
+                            if actionable { Image(systemName: "ellipsis").foregroundStyle(Palette.textSecondary) }
+                        }
+                    }
+                    .disabled(!actionable)
+                    .accessibilityIdentifier("feed.member.\(section.rawValue).\(member.userId)")
+                }
+            }
+            .listRowBackground(Palette.surface)
+        }
+    }
+}
+
+/// «Назначить модератором» (`PostFeedModeratorModal.tsx`): шесть прав, все выключены.
+private struct ModeratorPrivilegesSheet: View {
+    let username: String
+    let submit: (FeedPrivileges) async -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var privileges = FeedPrivileges()
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                SwiftUI.Section("@\(username)") {
+                    Toggle("Назначать модераторов", isOn: $privileges.canAssignModerators).accessibilityIdentifier("moderator.assign")
+                    Toggle("Банить пользователей", isOn: $privileges.canBanUsers).accessibilityIdentifier("moderator.ban")
+                    Toggle("Разбанивать пользователей", isOn: $privileges.canUnbanUsers).accessibilityIdentifier("moderator.unban")
+                    Toggle("Публиковать посты", isOn: $privileges.canCreatePosts).accessibilityIdentifier("moderator.post")
+                    Toggle("Удалять посты", isOn: $privileges.canDeletePosts).accessibilityIdentifier("moderator.deletePosts")
+                    Toggle("Управлять комментариями", isOn: $privileges.canManageComments).accessibilityIdentifier("moderator.comments")
+                }
+                .listRowBackground(Palette.surface)
+            }
+            .tint(Palette.accent)
+            .scrollContentBackground(.hidden)
+            .background(Palette.canvas)
+            .navigationTitle("Назначить модератором")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Отмена") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Назначить") {
+                        isSaving = true
+                        Task {
+                            await submit(privileges)
+                            dismiss()
+                        }
+                    }
+                    .disabled(isSaving)
+                    .accessibilityIdentifier("moderator.submit")
+                }
+            }
+        }
+    }
+}
+
+private struct FeedAddContactsSheet: View {
+    let model: FeedModel
+    let contacts: [Contact]
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var added: Set<String> = []
+
+    private var candidates: [Contact] {
+        let list = model.memberList
+        let known = Set(([list?.admin].compactMap { $0 } + (list?.moderators ?? []) + (list?.subscribers ?? []) + (list?.bannedUsers ?? [])).map(\.userId))
+        return contacts.filter { !known.contains($0.userId) || added.contains($0.userId) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(candidates) { contact in
+                HStack(spacing: 12) {
+                    Avatar(name: contact.displayName, imageKey: contact.avatarKey)
+                    VStack(alignment: .leading) {
+                        Text(contact.displayName).foregroundStyle(Palette.textPrimary)
+                        Text(contact.handle).font(.caption).foregroundStyle(Palette.textSecondary)
+                    }
+                    Spacer()
+                    if added.contains(contact.userId) {
+                        Text("Добавлен").font(.subheadline).foregroundStyle(Palette.textSecondary)
+                    } else {
+                        Button("Добавить") {
+                            Task { if await model.addSubscriber(contact.userId) { added.insert(contact.userId) } }
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("feed.addContact.\(contact.username)")
+                    }
+                }
+                .listRowBackground(Palette.surface)
+            }
+            .overlay { if candidates.isEmpty { ContentUnavailableView("Все контакты уже в канале", systemImage: "person.2") } }
+            .scrollContentBackground(.hidden)
+            .background(Palette.canvas)
+            .navigationTitle("Добавить из контактов")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } } }
+        }
+    }
+}
+
+/// Комментарии поста (`PostCommentsThread.tsx`): опрос раз в 4 с, удаление своих.
+private struct PostCommentsSheet: View {
+    @State var model: PostCommentsModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                List {
+                    if model.comments.isEmpty {
+                        Text(model.failed ? "Не удалось загрузить комментарии" : "Комментариев пока нет")
+                            .foregroundStyle(Palette.textSecondary)
+                            .listRowBackground(Color.clear)
+                    }
+                    ForEach(model.comments) { comment in
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text(comment.username.isEmpty ? "Пользователь" : "@\(comment.username)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Palette.messageName)
+                                Spacer()
+                                Text(ChatDates.messageTime(comment.createdAt)).font(.caption2).foregroundStyle(Palette.textSecondary)
+                            }
+                            Text(comment.text).foregroundStyle(Palette.textPrimary)
+                        }
+                        .listRowBackground(Palette.surface)
+                        .swipeActions {
+                            if model.isOwn(comment), !comment.id.hasPrefix("local-") {
+                                Button("Удалить", role: .destructive) { Task { await model.delete(comment) } }
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("comment.\(comment.id)")
+                    }
+                }
+                .scrollContentBackground(.hidden)
+
+                HStack(spacing: 8) {
+                    TextField("Комментарий", text: $model.draft, axis: .vertical)
+                        .lineLimit(1...4)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Palette.chrome, in: RoundedRectangle(cornerRadius: 22))
+                        .accessibilityIdentifier("comment.input")
+                    Button { Task { await model.send() } } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.body.weight(.bold))
+                            .frame(width: 44, height: 44)
+                            .foregroundStyle(Palette.onAccent)
+                            .background(Palette.accent, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel("Отправить комментарий")
+                    .accessibilityIdentifier("comment.send")
+                }
+                .padding(12)
+                .background(Palette.surface)
+            }
+            .background(Palette.canvas)
+            .navigationTitle("Комментарии")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { dismiss() } } }
+        }
+        .task { await model.poll() }
     }
 }
 

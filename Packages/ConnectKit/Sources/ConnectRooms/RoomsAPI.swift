@@ -162,8 +162,12 @@ public struct FeedPost: Decodable, Sendable, Equatable, Identifiable {
     public var userId: String?
     public var username: String
     public var attachments: [ChatAttachment]
+    public var uniqueViewsCount: Int?
+    public var commentsCount: Int?
 
-    public init(id: String, text: String, createdAtMilliseconds: Int64, userId: String? = nil, username: String, attachments: [ChatAttachment] = []) {
+    public init(id: String, text: String, createdAtMilliseconds: Int64, userId: String? = nil, username: String, attachments: [ChatAttachment] = [], uniqueViewsCount: Int? = nil, commentsCount: Int? = nil) {
+        self.uniqueViewsCount = uniqueViewsCount
+        self.commentsCount = commentsCount
         self.id = id
         self.text = text
         self.createdAtMilliseconds = createdAtMilliseconds
@@ -174,7 +178,7 @@ public struct FeedPost: Decodable, Sendable, Equatable, Identifiable {
 
     public var createdAt: Date { Date(timeIntervalSince1970: TimeInterval(createdAtMilliseconds) / 1000) }
 
-    enum CodingKeys: String, CodingKey { case id, message, dateTimeCreateTimestamp, userId, username, attachedFiles }
+    enum CodingKeys: String, CodingKey { case id, message, dateTimeCreateTimestamp, userId, username, attachedFiles, uniqueViewsCount, commentsCount }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -186,28 +190,39 @@ public struct FeedPost: Decodable, Sendable, Equatable, Identifiable {
         userId = try container.decodeIfPresent(String.self, forKey: .userId)
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         attachments = (try? container.decodeIfPresent([ChatAttachment].self, forKey: .attachedFiles)) ?? []
+        uniqueViewsCount = try? container.decodeIfPresent(Int.self, forKey: .uniqueViewsCount)
+        commentsCount = try? container.decodeIfPresent(Int.self, forKey: .commentsCount)
     }
 }
 
 /// Права модератора канала-ленты.
-public struct FeedPrivileges: Decodable, Sendable, Equatable {
+public struct FeedPrivileges: Codable, Sendable, Equatable {
     public var canCreatePosts: Bool
     public var canBanUsers: Bool
     public var canAssignModerators: Bool
+    public var canUnbanUsers: Bool
+    public var canDeletePosts: Bool
+    public var canManageComments: Bool
 
-    public init(canCreatePosts: Bool = false, canBanUsers: Bool = false, canAssignModerators: Bool = false) {
+    public init(canCreatePosts: Bool = false, canBanUsers: Bool = false, canAssignModerators: Bool = false, canUnbanUsers: Bool = false, canDeletePosts: Bool = false, canManageComments: Bool = false) {
         self.canCreatePosts = canCreatePosts
         self.canBanUsers = canBanUsers
         self.canAssignModerators = canAssignModerators
+        self.canUnbanUsers = canUnbanUsers
+        self.canDeletePosts = canDeletePosts
+        self.canManageComments = canManageComments
     }
 
-    enum CodingKeys: String, CodingKey { case canCreatePosts, canBanUsers, canAssignModerators }
+    enum CodingKeys: String, CodingKey { case canCreatePosts, canBanUsers, canAssignModerators, canUnbanUsers, canDeletePosts, canManageComments }
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         canCreatePosts = try container.decodeIfPresent(Bool.self, forKey: .canCreatePosts) ?? false
         canBanUsers = try container.decodeIfPresent(Bool.self, forKey: .canBanUsers) ?? false
         canAssignModerators = try container.decodeIfPresent(Bool.self, forKey: .canAssignModerators) ?? false
+        canUnbanUsers = try container.decodeIfPresent(Bool.self, forKey: .canUnbanUsers) ?? false
+        canDeletePosts = try container.decodeIfPresent(Bool.self, forKey: .canDeletePosts) ?? false
+        canManageComments = try container.decodeIfPresent(Bool.self, forKey: .canManageComments) ?? false
     }
 }
 
@@ -266,6 +281,17 @@ public protocol RoomsAPI: Sendable {
     func createPost(feedId: String, userId: String, text: String, timestamp: Int64, attachments: [ChatAttachment]) async throws -> FeedPost
     func setSubscribed(_ subscribed: Bool, feedId: String, userId: String) async throws
     func feedMembers(feedId: String) async throws -> FeedMembers
+    /// Модератор с правами (`PUT /api/post-feed/moderator/add`).
+    func addModerator(feedId: String, userId: String, privileges: FeedPrivileges) async throws
+    func removeModerator(feedId: String, userId: String) async throws
+    func setBanned(_ banned: Bool, feedId: String, userId: String) async throws
+    /// Отметка просмотра поста: `POST /api/post-feed/post/{id}/view`.
+    func markPostViewed(postId: String) async throws
+    func comments(postId: String) async throws -> [PostComment]
+    func createComment(postId: String, userId: String, text: String, timestamp: Int64) async throws -> PostComment
+    func deleteComment(id: String) async throws
+    /// Подписка по ссылке-приглашению или добавление контакта: `PUT /api/post-feed/subscriber/add`.
+    func addSubscriber(feedId: String, userId: String) async throws -> PostFeedCard?
 }
 
 public struct RemoteRoomsAPI: RoomsAPI {
@@ -350,6 +376,42 @@ public struct RemoteRoomsAPI: RoomsAPI {
         try await main.getDecoded("/api/post-feed/\(Self.path(feedId))/members")
     }
 
+    public func addModerator(feedId: String, userId: String, privileges: FeedPrivileges) async throws {
+        let body = ModeratorBody(postFeedId: feedId, userId: userId, privileges: privileges)
+        try HTTPClient.requireSuccess(try await main.send(method: "PUT", path: "/api/post-feed/moderator/add", body: JSONEncoder().encode(body)))
+    }
+
+    public func removeModerator(feedId: String, userId: String) async throws {
+        try HTTPClient.requireSuccess(try await main.send(method: "PUT", path: "/api/post-feed/moderator/remove", body: JSONEncoder().encode(FeedUserBody(postFeedId: feedId, userId: userId))))
+    }
+
+    public func setBanned(_ banned: Bool, feedId: String, userId: String) async throws {
+        let path = banned ? "/api/post-feed/ban/add" : "/api/post-feed/ban/remove"
+        try HTTPClient.requireSuccess(try await main.send(method: "PUT", path: path, body: JSONEncoder().encode(FeedUserBody(postFeedId: feedId, userId: userId))))
+    }
+
+    public func markPostViewed(postId: String) async throws {
+        try HTTPClient.requireSuccess(try await main.send(method: "POST", path: "/api/post-feed/post/\(Self.path(postId))/view", body: nil))
+    }
+
+    public func comments(postId: String) async throws -> [PostComment] {
+        try await main.getDecoded("/api/post-feed/post/\(Self.path(postId))/comments?page=0")
+    }
+
+    public func createComment(postId: String, userId: String, text: String, timestamp: Int64) async throws -> PostComment {
+        try await main.postDecoded("/api/post-feed/post/\(Self.path(postId))/comment/create", json: CommentBody(userId: userId, message: text, dateTimeCreateTimestamp: timestamp), as: PostComment.self)
+    }
+
+    public func deleteComment(id: String) async throws {
+        try HTTPClient.requireSuccess(try await main.send(method: "DELETE", path: "/api/post-feed/comment/\(Self.path(id))", body: nil))
+    }
+
+    public func addSubscriber(feedId: String, userId: String) async throws -> PostFeedCard? {
+        let response = try await main.send(method: "PUT", path: "/api/post-feed/subscriber/add", body: JSONEncoder().encode(FeedUserBody(postFeedId: feedId, userId: userId)))
+        try HTTPClient.requireSuccess(response)
+        return try? JSONDecoder().decode(PostFeedCard.self, from: response.body)
+    }
+
     static func path(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")) ?? value
     }
@@ -377,6 +439,27 @@ public enum RoomDates {
 
 /// Ссылки-приглашения веб-клиента: `/invite/<base64(roomId)>` и `/post-feed-invite/<base64(feedId)>`.
 public enum InviteLinks {
+    /// Код канала: `base64(feedId)`, в том числе в URL-safe варианте; принимается только UUID.
+    public static func feedId(from input: String) -> String? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let code: String
+        if let range = trimmed.range(of: "/post-feed-invite/") {
+            code = trimmed[range.upperBound...].split(separator: "/").first.map(String.init) ?? ""
+        } else if !trimmed.contains("/") {
+            code = trimmed
+        } else {
+            return nil
+        }
+        var base64 = (code.removingPercentEncoding ?? code).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 { base64 += "=" }
+        guard let data = Data(base64Encoded: base64), let decoded = String(data: data, encoding: .utf8), UUID(uuidString: decoded) != nil else { return nil }
+        return decoded
+    }
+
+    public static func feedURL(origin: URL, feedId: String) -> URL {
+        origin.appendingPathComponent("post-feed-invite").appendingPathComponent(Data(feedId.utf8).base64EncodedString())
+    }
+
     public static func roomURL(origin: URL, roomId: String) -> URL {
         origin.appendingPathComponent("invite").appendingPathComponent(Data(roomId.utf8).base64EncodedString())
     }
@@ -429,4 +512,64 @@ private struct CreatePostBody: Encodable, Sendable {
 private struct FeedUserBody: Encodable, Sendable {
     let postFeedId: String
     let userId: String
+}
+
+/// Комментарий к посту канала.
+public struct PostComment: Decodable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var postId: String?
+    public var text: String
+    public var createdAtMilliseconds: Int64
+    public var userId: String?
+    public var username: String
+
+    public init(id: String, postId: String? = nil, text: String, createdAtMilliseconds: Int64, userId: String?, username: String) {
+        self.id = id
+        self.postId = postId
+        self.text = text
+        self.createdAtMilliseconds = createdAtMilliseconds
+        self.userId = userId
+        self.username = username
+    }
+
+    public var createdAt: Date { Date(timeIntervalSince1970: TimeInterval(createdAtMilliseconds) / 1000) }
+
+    enum CodingKeys: String, CodingKey { case id, postId, message, dateTimeCreateTimestamp, userId, username }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let string = try? container.decode(String.self, forKey: .id) {
+            id = string
+        } else {
+            id = String(try container.decode(Int64.self, forKey: .id))
+        }
+        postId = try? container.decodeIfPresent(String.self, forKey: .postId)
+        text = (try? container.decodeIfPresent(String.self, forKey: .message)) ?? ""
+        createdAtMilliseconds = (try? container.decodeIfPresent(Int64.self, forKey: .dateTimeCreateTimestamp))
+            ?? (try? container.decodeIfPresent(Double.self, forKey: .dateTimeCreateTimestamp)).map { Int64($0) }
+            ?? 0
+        userId = try? container.decodeIfPresent(String.self, forKey: .userId)
+        username = (try? container.decodeIfPresent(String.self, forKey: .username)) ?? ""
+    }
+}
+
+private struct ModeratorBody: Encodable, Sendable {
+    let postFeedId: String
+    let userId: String
+    let privileges: FeedPrivileges
+
+    enum CodingKeys: String, CodingKey { case postFeedId, userId }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(postFeedId, forKey: .postFeedId)
+        try container.encode(userId, forKey: .userId)
+        try privileges.encode(to: encoder)
+    }
+}
+
+private struct CommentBody: Encodable, Sendable {
+    let userId: String
+    let message: String
+    let dateTimeCreateTimestamp: Int64
 }

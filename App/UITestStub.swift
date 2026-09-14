@@ -187,7 +187,12 @@ enum UITestStub {
             events: ["room-1": [RoomEvent(id: "event-1", title: "Планёрка", description: "Обсуждаем релиз", startsAt: Calendar.current.date(bySettingHour: 23, minute: 30, second: 0, of: now) ?? now)]],
             feeds: [PostFeedCard(id: "feed-1", name: "QA News", lastPost: "Первый пост", lastPostAtMilliseconds: Int64(now.timeIntervalSince1970 * 1000))],
             feedRoles: ["feed-1": .admin],
-            posts: ["feed-1": [FeedPost(id: "post-1", text: "Первый пост", createdAtMilliseconds: Int64(now.addingTimeInterval(-3600).timeIntervalSince1970 * 1000), username: "qa_wallpaper_1")]]
+            posts: ["feed-1": [FeedPost(id: "post-1", text: "Первый пост", createdAtMilliseconds: Int64(now.addingTimeInterval(-3600).timeIntervalSince1970 * 1000), username: "qa_wallpaper_1", uniqueViewsCount: 12, commentsCount: 1)]],
+            feedMembers: ["feed-1": FeedMembers(
+                admin: .init(userId: "qa-1", username: "qa_wallpaper_1"),
+                subscribers: [.init(userId: "qa-1", username: "qa_wallpaper_1"), .init(userId: "qa-2", username: "qa_wallpaper_2")]
+            )],
+            comments: ["post-1": [PostComment(id: "comment-1", postId: "post-1", text: "Отличная новость", createdAtMilliseconds: Int64(now.addingTimeInterval(-1800).timeIntervalSince1970 * 1000), userId: "qa-2", username: "qa_wallpaper_2")]]
         )
     }
 
