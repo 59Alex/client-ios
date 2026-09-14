@@ -134,3 +134,70 @@ struct ContactActionsTests {
         #expect(contact.photoKeys == ["a", "b", "c"])
     }
 }
+
+@MainActor
+@Suite("Присутствие контактов")
+struct PresenceTests {
+    @Test("кадр потока: статус из трёх значений, остальное отбрасывается")
+    func decoding() {
+        #expect(PresenceUpdate.decode(#"{"userId":"u","status":"ONLINE"}"#) == PresenceUpdate(userId: "u", status: .online))
+        #expect(PresenceUpdate.decode(#"{"userId":"u","status":"AWAY"}"#) == nil)
+        #expect(PresenceUpdate.decode("ping") == nil)
+    }
+
+    @Test("по имени: имя без пробелов или логин без @, без учёта регистра")
+    func sortByName() {
+        let sorted = ContactsModel.sorted([
+            Contact(userId: "y", name: "яна", username: "y", status: .online),
+            Contact(userId: "b", name: "  ", username: "@борис"),
+            Contact(userId: "a", name: "Анна", username: "a"),
+        ], by: .name)
+        #expect(sorted.map(\.userId) == ["a", "b", "y"])
+    }
+
+    @Test("по времени захода: скрытые после известных визитов")
+    func hiddenAfterKnown() {
+        let sorted = ContactsModel.sorted([
+            Contact(userId: "h", name: "Аня", username: "h", status: .hidden),
+            Contact(userId: "k", name: "Яков", username: "k", lastSeenAt: Date(timeIntervalSince1970: 5)),
+        ])
+        #expect(sorted.map(\.userId) == ["k", "h"])
+    }
+
+    @Test("снимок и живой поток меняют статус, уход из сети ставит «только что», скрытых снимок не трогает")
+    func livePresence() async throws {
+        let moment = Date(timeIntervalSince1970: 9_000)
+        let repository = FakeContactsRepository(contacts: ["me": [
+            Contact(userId: "u1", name: "Борис", username: "b"),
+            Contact(userId: "u2", name: "Анна", username: "a"),
+            Contact(userId: "u3", name: "Скрытый", username: "h", status: .hidden),
+        ]])
+        let model = ContactsModel(userId: "me", repository: repository, now: { moment })
+        await model.load()
+        #expect(model.presenceUserIds == ["u1", "u2", "u3"])
+
+        let api = FakePresenceAPI(snapshot: [PresenceUpdate(userId: "u1", status: .online), PresenceUpdate(userId: "u3", status: .online)])
+        let watcher = Task { await model.watchPresence(api: api) }
+        defer { watcher.cancel() }
+
+        for _ in 0..<200 where !(await api.hasSubscriber()) { try await Task.sleep(for: .milliseconds(5)) }
+        for _ in 0..<200 where contacts(model).first?.userId != "u1" { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(contacts(model).first { $0.userId == "u1" }?.status == .online)
+        #expect(contacts(model).first { $0.userId == "u3" }?.status == .hidden)
+        #expect(await api.subscriptions == [["u1", "u2", "u3"]])
+
+        await api.push(PresenceUpdate(userId: "u1", status: .offline))
+        for _ in 0..<200 where contacts(model).first { $0.userId == "u1" }?.status != .offline { try await Task.sleep(for: .milliseconds(5)) }
+        let left = try #require(contacts(model).first { $0.userId == "u1" })
+        #expect(left.lastSeenAt == moment)
+        #expect(contacts(model).map(\.userId) == ["u1", "u2", "u3"])
+
+        model.sort = .name
+        #expect(contacts(model).map(\.userId) == ["u2", "u1", "u3"])
+    }
+
+    private func contacts(_ model: ContactsModel) -> [Contact] {
+        if case let .loaded(list) = model.state { return list }
+        return []
+    }
+}

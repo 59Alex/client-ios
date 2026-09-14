@@ -98,3 +98,35 @@ public actor FakeContactsRepository: ContactsRepository {
         if value { blocked.insert(contactUserId) } else { blocked.remove(contactUserId) }
     }
 }
+
+/// Статусы пользователей в памяти: снимок и управляемый живой поток.
+public actor FakePresenceAPI: PresenceAPI {
+    public var snapshotValue: [PresenceUpdate]
+    public private(set) var subscriptions: [[String]] = []
+    private var continuations: [AsyncThrowingStream<PresenceUpdate, any Error>.Continuation] = []
+
+    public init(snapshot: [PresenceUpdate] = []) {
+        snapshotValue = snapshot
+    }
+
+    public func snapshot(userIds: [String]) async throws -> [PresenceUpdate] {
+        snapshotValue.filter { userIds.contains($0.userId) }
+    }
+
+    public nonisolated func events(userIds: [String]) -> AsyncThrowingStream<PresenceUpdate, any Error> {
+        let (stream, continuation) = AsyncThrowingStream<PresenceUpdate, any Error>.makeStream()
+        Task { await self.register(userIds, continuation) }
+        return stream
+    }
+
+    public func push(_ update: PresenceUpdate) {
+        continuations.forEach { $0.yield(update) }
+    }
+
+    public func hasSubscriber() -> Bool { !continuations.isEmpty }
+
+    private func register(_ userIds: [String], _ continuation: AsyncThrowingStream<PresenceUpdate, any Error>.Continuation) {
+        subscriptions.append(userIds)
+        continuations.append(continuation)
+    }
+}

@@ -156,6 +156,13 @@ struct HomeView: View {
         .task { await dependencies.invitations.load() }
         .task { await dependencies.contacts.load() }
         .task { await dependencies.rooms.load() }
+        .task { await dependencies.toasts.refresh() }
+        .task(id: dependencies.contacts.presenceUserIds) {
+            await dependencies.contacts.watchPresence(api: dependencies.presence)
+        }
+        .onChange(of: inboxSection) { _, section in
+            dependencies.toasts.isSuppressed = section != nil
+        }
         .task { myCard = try? await dependencies.users.card(userId: dependencies.user.userId) }
         .task(id: dependencies.contacts.state) {
             if case let .loaded(list) = dependencies.contacts.state { dependencies.directory.remember(list) }
@@ -165,6 +172,8 @@ struct HomeView: View {
         }
         .task(id: dependencies.unread.eventRevision) {
             guard dependencies.unread.eventRevision > 0 else { return }
+            try? await Task.sleep(for: .milliseconds(200))
+            await dependencies.toasts.refresh()
             await dependencies.invitations.load()
             if dependencies.unread.lastEventKind == "invitation" || dependencies.unread.lastEventKind == "sync" {
                 await dependencies.groupChats.load()
@@ -198,6 +207,11 @@ struct HomeView: View {
                 )
                 section
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .top) {
+                        if inboxSection == nil {
+                            ToastStack(model: dependencies.toasts) { openToast($0) }
+                        }
+                    }
                 if !navigation.isDeep {
                     UserPanel(user: dependencies.user, avatarKey: myCard?.avatarKey, voice: dependencies.roomVoice) { isProfileShown = true }
                         .background(Palette.canvas)
@@ -245,6 +259,31 @@ struct HomeView: View {
                 navigation.open(route)
             }
         }
+    }
+
+    /// Переход из тоста (`MainWindow.tsx`): чат, группа, канал комнаты; события и ленты — в свои разделы.
+    private func openToast(_ notification: InboxNotification) {
+        Task { await dependencies.toasts.dismiss(notification.id) }
+        guard let chatId = notification.chatId else { return }
+        switch notification.chatType {
+        case .p2p:
+            navigation.open(ChatRoute(kind: .p2p, roomId: chatId, title: chatTitle(dependencies.p2pChats, chatId) ?? "Личный чат"))
+        case .group:
+            navigation.open(ChatRoute(kind: .group, roomId: chatId, title: chatTitle(dependencies.groupChats, chatId) ?? "Группа"))
+        case .postFeed:
+            navigation.tab = .feeds
+        case .roomEvent:
+            if let room = dependencies.rooms.rooms.first(where: { $0.id == chatId }) {
+                navigation.openRoom(id: room.id, name: room.name)
+            }
+        case .room, .unknown:
+            navigation.open(ChatRoute(kind: .channel, roomId: chatId, title: "Канал"))
+        }
+    }
+
+    private func chatTitle(_ list: ChatListModel, _ roomId: String) -> String? {
+        guard case let .loaded(chats) = list.state else { return nil }
+        return chats.first { $0.roomId == roomId }?.title
     }
 
     private func logout() async {
