@@ -165,3 +165,43 @@ public actor FakeMeetingsAPI: MeetingsAPI {
         return MeetingAcceptance(groupId: acceptGroupId, callId: nil, active: false)
     }
 }
+
+/// Гостевой вход в памяти: ссылка всегда ведёт в «QA Group».
+public actor FakeGuestMeetingAPI: GuestMeetingAPI {
+    public private(set) var joined: [(code: String, name: String)] = []
+    public private(set) var sent: [String] = []
+    public private(set) var leftTokens: [String] = []
+    public private(set) var heartbeats = 0
+    public var active = true
+    public var failure: MeetingError?
+    private var stored: [GuestMeetingMessage]
+
+    public init(messages: [GuestMeetingMessage] = [GuestMeetingMessage(id: "m1", message: "Добро пожаловать на встречу", createdAt: nil, guestId: nil, displayName: "QA Wallpaper")]) {
+        stored = messages
+    }
+
+    public func setActive(_ value: Bool) { active = value }
+    public func setFailure(_ error: MeetingError?) { failure = error }
+
+    public func preview(code: String) async throws -> String? { "QA Group" }
+
+    public func join(code: String, displayName: String, sessionToken: String?) async throws -> GuestMeetingJoin {
+        if let failure { throw failure }
+        joined.append((code, displayName))
+        return GuestMeetingJoin(sessionToken: "session-token", guestId: "guest:1", groupId: "group-1", callId: "call-1", name: "QA Group", voiceToken: "voice-token", textToken: "text-token")
+    }
+
+    public func heartbeat(sessionToken: String) async throws -> GuestMeetingState {
+        heartbeats += 1
+        return GuestMeetingState(active: active)
+    }
+
+    public func leave(sessionToken: String) async { leftTokens.append(sessionToken) }
+
+    public func messages(sessionToken: String) async throws -> [GuestMeetingMessage] { stored }
+
+    public func send(message: String, sessionToken: String) async throws {
+        sent.append(message)
+        stored.append(GuestMeetingMessage(id: "m\(stored.count + 1)", message: message, createdAt: nil, guestId: "guest:1", displayName: "Гость"))
+    }
+}

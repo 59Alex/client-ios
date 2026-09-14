@@ -1,3 +1,4 @@
+import ConnectCalls
 import ConnectCore
 import ConnectFeatures
 import SwiftUI
@@ -17,7 +18,7 @@ struct RootView: View {
                     .controlSize(.large)
                     .accessibilityLabel("Загрузка")
             case .signedOut:
-                LoginView(auth: dependencies.auth)
+                LoginView(auth: dependencies.auth, guest: dependencies.guestMeeting)
             case .signedIn(let user):
                 SignedInRoot(user: user, dependencies: dependencies)
             case .failed(let message):
@@ -29,6 +30,13 @@ struct RootView: View {
                         .frame(maxWidth: 240)
                     Button("Выйти", role: .destructive) { Task { await session.logout() } }
                 }
+            }
+        }
+        .overlay {
+            // Гость на встрече поверх экрана входа: состояние целиком в модели.
+            if dependencies.guestMeeting.phase != .idle {
+                GuestMeetingView(model: dependencies.guestMeeting)
+                    .transition(.opacity)
             }
         }
         .tint(Palette.accent)

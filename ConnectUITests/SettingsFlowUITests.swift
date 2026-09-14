@@ -18,21 +18,15 @@ final class SettingsFlowUITests: XCTestCase {
 
         let name = app.textFields["register.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
-        name.tap()
-        name.typeText("Новый Пользователь")
-        let username = app.textFields["register.username"]
-        username.tap()
-        username.typeText("newbie")
-        let email = app.textFields["register.email"]
-        email.tap()
-        email.typeText("new@example.com")
+        type("Новый Пользователь", into: name, app: app)
+        type("newbie", into: app.textFields["register.username"], app: app)
+        type("new@example.com", into: app.textFields["register.email"], app: app)
         XCTAssertFalse(app.buttons["register.submit"].isEnabled)
 
         app.buttons["Показать пароль"].tap()
         let password = app.textFields["register.password"]
         XCTAssertTrue(password.waitForExistence(timeout: 5))
-        password.tap()
-        password.typeText("Passw0rd!")
+        type("Passw0rd!", into: password, app: app)
         attachScreenshot("60-registration")
 
         XCTAssertTrue(app.buttons["register.submit"].isEnabled)
@@ -100,6 +94,18 @@ final class SettingsFlowUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["Приветствие.png"].waitForExistence(timeout: 10))
         XCTAssertFalse(greeting.exists)
+    }
+
+    /// Поле иногда не получает фокус с первого нажатия на медленном симуляторе.
+    @MainActor
+    private func type(_ text: String, into field: XCUIElement, app: XCUIApplication) {
+        for _ in 0..<3 {
+            field.tap()
+            if app.keyboards.firstMatch.waitForExistence(timeout: 2), (field.value(forKey: "hasKeyboardFocus") as? Bool) == true {
+                break
+            }
+        }
+        field.typeText(text)
     }
 
     @MainActor

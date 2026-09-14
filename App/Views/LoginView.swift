@@ -1,4 +1,5 @@
 import ConnectAuth
+import ConnectCalls
 import ConnectCore
 import ConnectFeatures
 import SwiftUI
@@ -16,10 +17,13 @@ struct LoginView: View {
     @State private var registration: RegistrationModel
     @State private var mode: Mode = .login
     @FocusState private var focusedField: Field?
+    private let guest: GuestMeetingModel?
+    @State private var isGuestJoinShown = false
 
-    init(auth: AuthService) {
+    init(auth: AuthService, guest: GuestMeetingModel? = nil) {
         _model = State(initialValue: LoginModel(auth: auth))
         _registration = State(initialValue: RegistrationModel(auth: auth))
+        self.guest = guest
     }
 
     var body: some View {
@@ -58,6 +62,17 @@ struct LoginView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: Radius.modal).strokeBorder(Palette.border)
                 }
+
+                if guest != nil, model.step == .credentials {
+                    Button {
+                        isGuestJoinShown = true
+                    } label: {
+                        Label("Войти во встречу как гость", systemImage: "person.crop.circle.badge.questionmark")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("login.guestMeeting")
+                }
             }
             .frame(maxWidth: 440)
             .padding(.horizontal, 20)
@@ -67,6 +82,11 @@ struct LoginView: View {
         .scrollDismissesKeyboard(.interactively)
         .background(Palette.canvas)
         .disabled(model.isSubmitting || registration.isSubmitting)
+        .sheet(isPresented: $isGuestJoinShown) {
+            if let guest {
+                GuestJoinSheet(model: guest)
+            }
+        }
     }
 
     private var header: some View {
