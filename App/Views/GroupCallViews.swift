@@ -20,6 +20,12 @@ struct GroupCallView: View {
             .padding(.top, 32)
             .padding(.horizontal, 20)
 
+            if let session = model.session, !session.shares.items.isEmpty {
+                ShareStage(shares: session.shares.items) { session.videoTrack(for: $0) }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+            }
+
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
                     ForEach(model.participants) { participant in

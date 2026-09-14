@@ -142,3 +142,47 @@ struct RemoteStreamTrackerTests {
         #expect(tracker.handle(.trackPublished(participant: "p", trackId: "t", name: "microphone", kind: .audio)).isEmpty)
     }
 }
+
+@Suite("Трансляции камеры и экрана")
+struct RemoteSharesTests {
+    private func share(userId: String, type: String, key: String, trackId: String, createdAt: Int64, participant: String = "s") -> CallRoomEvent {
+        let name = TrackName(
+            key: key,
+            clientData: CallClientData(userId: userId, username: "u", sessionId: nil, streamType: "SHARE", streamId: key, shareType: type).encoded(),
+            createdAtMilliseconds: createdAt,
+            hasAudio: false,
+            hasVideo: true
+        )
+        return .trackPublished(participant: participant, trackId: trackId, name: name.encoded(), kind: .video)
+    }
+
+    @Test("клиентские данные трансляции веба разбираются, у голоса полей трансляции нет")
+    func clientData() {
+        let web = #"{"clientData":"{\"streamType\":\"SHARE\",\"streamId\":\"x\",\"shareType\":\"SHARE_DISPLAY\",\"userId\":\"u1\",\"username\":\"ivan\"}"}"#
+        let parsed = CallClientData.decode(web)
+        #expect(parsed?.shareType == "SHARE_DISPLAY")
+        #expect(parsed?.streamType == "SHARE")
+        #expect(!CallClientData(userId: "me", username: "me", sessionId: nil).encoded().contains("streamType"))
+    }
+
+    @Test("камера и экран отдельно, новая камера того же пользователя заменяет старую, своя не показывается")
+    func newestPerKind() {
+        var tracker = RemoteStreamTracker()
+        var shares = RemoteShares()
+        func feed(_ event: CallRoomEvent) { tracker.handle(event).forEach { shares.apply($0, me: "me") } }
+
+        feed(share(userId: "u1", type: "WEB_CAMERA", key: "cam1", trackId: "v1", createdAt: 10))
+        feed(share(userId: "u1", type: "SHARE_DISPLAY", key: "scr", trackId: "v2", createdAt: 11))
+        feed(share(userId: "me", type: "WEB_CAMERA", key: "mine", trackId: "v3", createdAt: 12))
+        #expect(shares.items.map(\.id) == ["u1-WEB_CAMERA", "u1-SHARE_DISPLAY"])
+        #expect(shares.items.first?.trackId == "v1")
+
+        feed(share(userId: "u1", type: "WEB_CAMERA", key: "cam2", trackId: "v4", createdAt: 20, participant: "s2"))
+        #expect(shares.items.first { $0.kind == .camera }?.trackId == "v4")
+        feed(.trackUnpublished(participant: "s", trackId: "v1"))
+        #expect(shares.items.first { $0.kind == .camera }?.trackId == "v4")
+
+        feed(.trackUnpublished(participant: "s", trackId: "v2"))
+        #expect(shares.items.map(\.kind) == [.camera])
+    }
+}

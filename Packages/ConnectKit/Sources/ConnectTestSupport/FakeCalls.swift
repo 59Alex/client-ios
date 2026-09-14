@@ -43,6 +43,14 @@ public final class FakeCallRoom: CallRoom {
         speakerOutput = enabled
     }
 
+    /// Видеодорожки для проверок отрисовки: по id отдаётся сама строка id.
+    public private(set) var requestedVideoTracks: [String] = []
+
+    public func remoteVideoTrack(trackId: String) -> AnyObject? {
+        requestedVideoTracks.append(trackId)
+        return trackId as NSString
+    }
+
     public func send(_ packet: Data, topic: String) async throws {
         if let decoded = SignalPacket.decode(packet) {
             sentPackets.append(decoded)
@@ -68,6 +76,18 @@ public final class FakeCallRoom: CallRoom {
             hasVideo: false
         )
         emit(.trackPublished(participant: participant, trackId: trackId, name: name.encoded(), kind: .audio))
+    }
+
+    /// Собеседник включает камеру или экран отдельным подключением, как веб-клиент.
+    public func emitRemoteShare(userId: String, shareType: String = "WEB_CAMERA", participant: String = "share#1", trackId: String = "TR_share_video", key: String = "share-stream", createdAt: Int64 = 1) {
+        let name = TrackName(
+            key: key,
+            clientData: CallClientData(userId: userId, username: userId, sessionId: nil, streamType: "SHARE", streamId: key, shareType: shareType).encoded(),
+            createdAtMilliseconds: createdAt,
+            hasAudio: false,
+            hasVideo: true
+        )
+        emit(.trackPublished(participant: participant, trackId: trackId, name: name.encoded(), kind: .video))
     }
 }
 

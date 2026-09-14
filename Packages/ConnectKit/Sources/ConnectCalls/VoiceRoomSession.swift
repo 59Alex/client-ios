@@ -36,6 +36,8 @@ public final class VoiceRoomSession {
     public private(set) var isMuted: Bool
     public private(set) var isSpeakerOff = false
     public private(set) var isConnected = false
+    /// Камеры и экраны участников.
+    public private(set) var shares = RemoteShares()
 
     private let me: String
     private let clientData: String
@@ -56,6 +58,10 @@ public final class VoiceRoomSession {
 
     public var events: AsyncStream<CallRoomEvent> { room.events }
 
+    public func videoTrack(for share: RemoteShare) -> AnyObject? {
+        room.remoteVideoTrack(trackId: share.trackId)
+    }
+
     public func connect(url: URL, token: String) async throws {
         try await room.connect(url: url, token: token)
         let name = TrackName(
@@ -75,6 +81,7 @@ public final class VoiceRoomSession {
     @discardableResult
     public func handle(_ event: CallRoomEvent) async -> Bool {
         for change in tracker.handle(event) {
+            shares.apply(change, me: me)
             switch change {
             case let .added(stream):
                 guard stream.hasAudio, !stream.hasVideo, let userId = stream.clientData?.userId, userId != me else { continue }
@@ -105,8 +112,11 @@ public final class VoiceRoomSession {
             }
         case let .localSpeakingChanged(speaking):
             await updateLocalSpeaking(speaking && !isMuted)
+        case let .trackSubscribed(trackId):
+            shares.markSubscribed(trackId: trackId)
         case .disconnected:
             isConnected = false
+            shares.removeAll()
             return true
         default:
             break
