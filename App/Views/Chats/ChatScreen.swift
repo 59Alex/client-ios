@@ -29,6 +29,8 @@ struct ChatScreen: View {
     @State private var isEmojiShown = false
     @FocusState private var isInputFocused: Bool
     @Environment(\.mediaLoader) private var mediaLoader
+    @Environment(\.fileAPI) private var fileAPI
+    @State private var streamingVideo: StreamingVideo?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -145,6 +147,9 @@ struct ChatScreen: View {
             }
         }
         .quickLookPreview($previewURL)
+        .fullScreenCover(item: $streamingVideo) { video in
+            StreamingVideoPlayer(video: video)
+        }
         .confirmationDialog("Удалить сообщение?", isPresented: .init(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }), titleVisibility: .visible) {
             Button("Удалить", role: .destructive) {
                 if let message = confirmDelete {
@@ -379,6 +384,17 @@ extension ChatScreen {
     }
 
     private func open(_ attachment: ChatAttachment) {
+        // Видео играет HLS-потоком сервиса сразу, без скачивания файла целиком (`useProgressiveVideoSegments.ts`).
+        if attachment.kind == .video, let fileAPI {
+            Task {
+                if let url = await fileAPI.videoPlaylistURL(urlS3: attachment.urlS3) {
+                    streamingVideo = StreamingVideo(url: url, title: attachment.displayName)
+                    return
+                }
+                if let mediaLoader { previewURL = await mediaLoader.fileURL(for: attachment.urlS3, filename: attachment.displayName) }
+            }
+            return
+        }
         guard let mediaLoader else { return }
         Task {
             previewURL = await mediaLoader.fileURL(for: attachment.urlS3, filename: attachment.displayName)
