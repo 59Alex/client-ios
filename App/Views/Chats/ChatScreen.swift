@@ -23,6 +23,8 @@ struct ChatScreen: View {
     @State private var previewURL: URL?
     @State private var isBulkDeleteShown = false
     @State private var recorder = VoiceRecorder()
+    @State private var circleRecorder = VideoCircleRecorder()
+    @State private var recordMode: RecordMode = .voice
     @State private var isRecordingLocked = false
     @State private var isEmojiShown = false
     @FocusState private var isInputFocused: Bool
@@ -63,6 +65,11 @@ struct ChatScreen: View {
             }
         }
         .background { ChatBackdrop() }
+        .overlay {
+            if circleRecorder.isActive {
+                VideoCircleRecordingOverlay(recorder: circleRecorder)
+            }
+        }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Palette.chrome, for: .navigationBar)
@@ -334,8 +341,10 @@ struct ChatScreen: View {
                 .accessibilityLabel("Отправить")
                 .accessibilityIdentifier("chat.send")
             } else {
-                VoiceRecordButton(recorder: recorder, isLocked: $isRecordingLocked) { data in
+                VoiceRecordButton(recorder: recorder, circleRecorder: circleRecorder, mode: $recordMode, isLocked: $isRecordingLocked) { data in
                     Task { await model.sendVoiceMessage(data: data) }
+                } onSendCircle: { data in
+                    Task { await model.sendVideoMessage(data: data) }
                 }
                 .disabled(model.isPartnerBanned)
             }
@@ -603,6 +612,8 @@ private struct MessageRow: View {
             ForEach(message.attachments, id: \.self) { attachment in
                 if attachment.kind == .voiceMessage {
                     VoiceMessagePlayer(attachment: attachment, isOwn: isOwn)
+                } else if attachment.kind == .videoMessage {
+                    VideoCirclePlayer(attachment: attachment)
                 } else {
                 Button { onOpenAttachment(attachment) } label: {
                     if attachment.kind == .image {

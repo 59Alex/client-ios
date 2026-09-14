@@ -42,6 +42,10 @@ public protocol FileAPI: Sendable {
     func uploadProgress(userId: String) -> AsyncThrowingStream<UploadProgress, any Error>
     /// Голосовое в AAC для AVFoundation: webm/opus с веба сервис перекодирует (`GET /api/file/audio/aac`).
     func playableVoice(urlS3: String) async throws -> Data
+    /// Кружок: `POST /api/file/upload/video-message`, сервис пересобирает видео в H.264/AAC и делает превью.
+    func uploadVideoMessage(data: Data, filename: String, key: String, userId: String, username: String) async throws -> UploadedFile
+    /// HLS-плейлист видео с токеном в параметре: его сразу играет AVPlayer.
+    func videoPlaylistURL(urlS3: String) async -> URL?
 }
 
 public extension FileAPI {
@@ -146,6 +150,30 @@ public struct RemoteFileAPI: FileAPI {
         return UploadedFile(urlS3: urlS3, name: parts.name, extension: parts.extension)
     }
 
+    public func uploadVideoMessage(data: Data, filename: String, key: String, userId: String, username: String) async throws -> UploadedFile {
+        let meta = UploadMeta(bucket: FileBucket.chat.rawValue, key: key, userId: userId, username: username, id: UUID().uuidString.lowercased())
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        var form = MultipartFormBody()
+        form.addFile(name: "file", filename: filename, mimeType: "video/mp4", content: data)
+        form.addField(name: "meta", value: String(decoding: try encoder.encode(meta), as: UTF8.self))
+        form.addField(name: "size", value: String(data.count))
+        let response = try await client.send(method: "POST", path: "/api/file/upload/video-message", body: form.finalized(), contentType: form.contentType, timeout: 300)
+        try HTTPClient.requireSuccess(response)
+        let result = try JSONDecoder().decode(VideoMessageResponse.self, from: response.body)
+        guard let urlS3 = result.urlS3, !urlS3.isEmpty else { throw APIError.decoding("пустой адрес кружка") }
+        if result.status == "FAILED" { throw APIError.decoding("кружок не обработан") }
+        let parts = UploadedFile.split(filename: filename)
+        return UploadedFile(urlS3: urlS3, previewUrlS3: result.previewUrlS3, name: parts.name, extension: parts.extension)
+    }
+
+    public func videoPlaylistURL(urlS3: String) async -> URL? {
+        guard let token = await client.accessToken() else { return nil }
+        var components = URLComponents(url: HTTPClient.join(client.baseURL, "/api/file/video/hls/playlist"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "url", value: urlS3), URLQueryItem(name: "access_token", value: token)]
+        return components?.url
+    }
+
     public func playableVoice(urlS3: String) async throws -> Data {
         var components = URLComponents()
         components.queryItems = [URLQueryItem(name: "url", value: urlS3)]
@@ -167,6 +195,12 @@ private struct UploadMeta: Encodable {
     let userId: String
     let username: String
     let id: String
+}
+
+private struct VideoMessageResponse: Decodable {
+    let urlS3: String?
+    let previewUrlS3: String?
+    let status: String?
 }
 
 private struct UploadResponse: Decodable {

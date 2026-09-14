@@ -69,6 +69,20 @@ public actor FakeFileAPI: FileAPI {
         return UploadedFile(urlS3: url, name: parts.name, extension: parts.extension)
     }
 
+    public private(set) var videoMessageUploads: [String] = []
+
+    public func uploadVideoMessage(data: Data, filename: String, key: String, userId: String, username: String) async throws -> UploadedFile {
+        if failUpload { throw URLError(.notConnectedToInternet) }
+        counter += 1
+        let parts = UploadedFile.split(filename: filename)
+        let url = "file-chat@\(key)/videocirclemessages/\(username)/\(counter).mp4"
+        stored[url] = data
+        videoMessageUploads.append(filename)
+        return UploadedFile(urlS3: url, previewUrlS3: "file-chat@\(key)/videocirclemessages/\(username)/\(counter).jpg", name: parts.name, extension: parts.extension)
+    }
+
+    public nonisolated func videoPlaylistURL(urlS3: String) async -> URL? { nil }
+
     public private(set) var playableVoiceRequests: [String] = []
 
     public func playableVoice(urlS3: String) async throws -> Data {

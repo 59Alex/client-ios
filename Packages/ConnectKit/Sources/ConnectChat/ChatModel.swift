@@ -267,6 +267,21 @@ public final class ChatModel {
         return "voice-message-\(stamp).\(ext)"
     }
 
+    /// Кружок уходит сразу: сервис пересобирает видео, в сообщении адрес и превью.
+    @discardableResult
+    public func sendVideoMessage(data: Data) async -> Bool {
+        guard let files, !isPartnerBanned, !data.isEmpty else { return false }
+        let filename = Self.voiceFilename(at: now(), extension: "mp4").replacingOccurrences(of: "voice-message-", with: "video-message-")
+        do {
+            let uploaded = try await files.uploadVideoMessage(data: data, filename: filename, key: roomId, userId: me.userId, username: me.username)
+            let attachment = ChatAttachment(urlS3: uploaded.urlS3, previewUrlS3: uploaded.previewUrlS3, name: uploaded.name, extension: uploaded.extension)
+            await post(text: "", attachments: [attachment])
+            return messages.first { $0.attachments == [attachment] }?.delivery == .sent
+        } catch {
+            return false
+        }
+    }
+
     /// Голосовое уходит сразу: загрузка в `file-chat` и сообщение без текста с одним вложением.
     @discardableResult
     public func sendVoiceMessage(data: Data) async -> Bool {
