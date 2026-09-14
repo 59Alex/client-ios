@@ -33,6 +33,15 @@ final class AppearanceFlowUITests: XCTestCase {
         app.buttons["appearance.theme.dracula"].tap()
         XCTAssertTrue(app.buttons["appearance.theme.dracula"].isSelected)
         attachScreenshot("83-appearance-dracula")
+
+        let plain = app.buttons["appearance.background.plain"]
+        let draculaDefault = app.buttons["appearance.background.pin1031605858416701164"]
+        XCTAssertTrue(draculaDefault.waitForExistence(timeout: 5))
+        XCTAssertTrue(draculaDefault.isSelected)
+        plain.tap()
+        XCTAssertTrue(plain.isSelected)
+        XCTAssertFalse(draculaDefault.isSelected)
+        attachScreenshot("87-appearance-backgrounds")
     }
 
     @MainActor

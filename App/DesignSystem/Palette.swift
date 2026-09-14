@@ -7,12 +7,17 @@ import SwiftUI
 @MainActor
 enum AppTheme {
     private(set) static var appearance = AppearanceModel(api: DisabledAppearanceAPI(), store: MemoryAppearanceStoreFallback())
+    private(set) static var backgrounds = ChatBackgroundsModel(api: DisabledBackgroundsAPI())
 
     static var colors: ThemeColors { appearance.colors }
 
-    static func use(_ model: AppearanceModel) {
+    static func use(_ model: AppearanceModel, backgrounds: ChatBackgroundsModel) {
         appearance = model
+        self.backgrounds = backgrounds
     }
+
+    /// Фон чата телефона по выбору пользователя; `nil` — однотонный.
+    static var chatBackground: ChatBackground? { backgrounds.background(for: appearance.draft) }
 
     /// Логотип темы (`THEME_LOGOS`): Dracula — свой, Dark — серебро, Дубай — прежний, остальные — белый.
     static var logoName: String {
@@ -90,6 +95,14 @@ private struct DisabledAppearanceAPI: AppearanceAPI {
     func updateAppearance(_ settings: AppearanceSettings, deviceId: String?) async throws -> AppearanceSettings {
         throw CancellationError()
     }
+}
+
+private struct DisabledBackgroundsAPI: BackgroundsAPI {
+    func backgrounds(platform: BackgroundPlatform) async throws -> BackgroundList {
+        throw CancellationError()
+    }
+
+    func imageURL(for background: ChatBackground) -> URL? { nil }
 }
 
 private struct MemoryAppearanceStoreFallback: AppearanceStore {

@@ -128,3 +128,27 @@ public final class MemoryAppearanceStore: AppearanceStore, @unchecked Sendable {
         lock.withLock { value = preferences }
     }
 }
+
+/// Каталог фонов в памяти; картинок нет — чат остаётся однотонным.
+public struct FakeBackgroundsAPI: BackgroundsAPI {
+    public let list: BackgroundList
+    public let fail: Bool
+
+    public init(list: BackgroundList = FakeBackgroundsAPI.sample, fail: Bool = false) {
+        self.list = list
+        self.fail = fail
+    }
+
+    public func backgrounds(platform: BackgroundPlatform) async throws -> BackgroundList {
+        if fail { throw APIError.http(statusCode: 503, body: nil) }
+        return list
+    }
+
+    public func imageURL(for background: ChatBackground) -> URL? { nil }
+
+    public static let sample = BackgroundList(version: 1, platform: "mobile", themes: AppearanceTheme.allCases.map { theme in
+        ThemeBackgrounds(theme: theme.rawValue, defaultBackground: theme.gallery.first ?? "plain", backgrounds: theme.gallery.enumerated().map { index, id in
+            ChatBackground(id: id, name: "Фон \(index + 1)", position: "50% 40%", imageUrl: "/api/backgrounds/\(id)/image")
+        })
+    })
+}
