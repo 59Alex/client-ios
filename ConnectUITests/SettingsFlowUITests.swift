@@ -96,8 +96,8 @@ final class SettingsFlowUITests: XCTestCase {
         XCTAssertFalse(greeting.exists)
     }
 
-    @MainActor
     /// Поле иногда не получает фокус с первого нажатия на медленном симуляторе.
+    @MainActor
     private func type(_ text: String, into field: XCUIElement, app: XCUIApplication) {
         for _ in 0..<3 {
             field.tap()
@@ -108,6 +108,7 @@ final class SettingsFlowUITests: XCTestCase {
         field.typeText(text)
     }
 
+    @MainActor
     private func attachScreenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name
