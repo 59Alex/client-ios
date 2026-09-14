@@ -179,3 +179,45 @@ struct VoiceMessageTests {
         #expect(chat.messages.first?.delivery == .sent)
     }
 }
+
+@MainActor
+@Suite("Кружки")
+struct VideoMessageTests {
+    @Test("кружок загружается через видеосообщения и уходит с превью")
+    func send() async throws {
+        let api = FakeChatAPI(messages: ["room": []])
+        let files = FakeFileAPI()
+        let chat = ChatModel(kind: .group, roomId: "room", title: "G", me: ChatUser(userId: "me", username: "me"), api: api, unread: nil, rtcUrl: URL(string: "wss://x")!, makeRoom: { FakeCallRoom() }, files: files)
+        await chat.load()
+
+        #expect(await chat.sendVideoMessage(data: Data("mp4".utf8)))
+
+        let filename = try #require(await files.videoMessageUploads.first)
+        #expect(filename.hasPrefix("video-message-"))
+        #expect(filename.hasSuffix(".mp4"))
+        let attachment = try #require(await api.sent.first?.attachedFiles.first)
+        #expect(attachment.kind == .videoMessage)
+        #expect(attachment.previewUrlS3?.hasSuffix(".jpg") == true)
+    }
+
+    @Test("ответ загрузки кружка и адрес HLS с токеном")
+    func remote() async throws {
+        struct Token: AccessTokenProvider {
+            func validAccessToken() async -> String? { "jwt" }
+            func handleUnauthorized() async {}
+        }
+        let transport = StubTransport()
+        transport.on("/api/file/upload/video-message", status: 202, json: #"{"urlS3":"file-chat@r/v/u/1.mp4","previewUrlS3":"file-chat@r/v/u/1.jpg","segmentManifestUrlS3":null,"jobId":null,"status":"READY"}"#)
+        let api = RemoteFileAPI(client: HTTPClient(baseURL: URL(string: "https://s3.example")!, transport: transport, tokenProvider: Token()))
+
+        let file = try await api.uploadVideoMessage(data: Data("v".utf8), filename: "video-message-x.mp4", key: "r", userId: "me", username: "me")
+        #expect(file.urlS3 == "file-chat@r/v/u/1.mp4")
+        #expect(file.previewUrlS3 == "file-chat@r/v/u/1.jpg")
+        #expect(file.extension == ".mp4")
+
+        let url = try #require(await api.videoPlaylistURL(urlS3: "file-chat@r/v/u/1.mp4"))
+        #expect(url.path == "/api/file/video/hls/playlist")
+        #expect(url.query?.contains("access_token=jwt") == true)
+        #expect(url.query?.contains("url=file-chat@r/v/u/1.mp4") == true)
+    }
+}
