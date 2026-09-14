@@ -63,6 +63,7 @@ struct HomeView: View {
     @State private var isJoinRoomShown = false
     @State private var myCard: Contact?
     @State private var didRestoreNavigation = false
+    @State private var isConnectionErrorsShown = false
 
     private var tabItems: [HomeTabBar.Item] {
         let unread = dependencies.unread
@@ -102,6 +103,10 @@ struct HomeView: View {
                         navigation.tab = .feeds
                     }
                     .environment(\.mediaLoader, dependencies.mediaLoader)
+                }
+                .sheet(isPresented: $isConnectionErrorsShown) {
+                    ConnectionErrorsSheet(model: dependencies.connectionErrors)
+                        .presentationDetents([.medium, .large])
                 }
                 .sheet(isPresented: $isProfileShown) {
                     ProfileView(dependencies: dependencies, session: session, onLogout: logout)
@@ -171,6 +176,7 @@ struct HomeView: View {
         .task { await dependencies.contacts.load() }
         .task { await dependencies.rooms.load() }
         .task { await dependencies.toasts.refresh() }
+        .modifier(ConnectionTracking(dependencies: dependencies, isShown: $isConnectionErrorsShown))
         .task(id: dependencies.contacts.presenceUserIds) {
             await dependencies.contacts.watchPresence(api: dependencies.presence)
         }
@@ -215,6 +221,8 @@ struct HomeView: View {
                     isRailShown: navigation.isRailShown,
                     invitations: dependencies.invitations.pendingCount,
                     notifications: dependencies.unread.summary.unread,
+                    errorTone: dependencies.connectionErrors.tone,
+                    onErrors: { isConnectionErrorsShown = true },
                     onMenu: { withAnimation(.easeOut(duration: 0.2)) { navigation.isRailShown.toggle() } },
                     onInvitations: { inboxSection = .invitations },
                     onNotifications: { inboxSection = .notifications }
@@ -479,5 +487,58 @@ private extension UserStatus {
         case .hidden: "Скрыт"
         case .offline: "Не в сети"
         }
+    }
+}
+
+/// Панель ошибок следит за звонками, голосовыми каналами и возвратом из «Настроек».
+private struct ConnectionTracking: ViewModifier {
+    let dependencies: SignedInDependencies
+    @Binding var isShown: Bool
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var errors: ConnectionErrorsModel { dependencies.connectionErrors }
+
+    func body(content: Content) -> some View {
+        content
+            .task { await errors.checkMediaServer() }
+            .onChange(of: scenePhase) { _, phase in
+                // Вернулись из «Настроек»: доступ к микрофону проверяется без нового запроса.
+                guard phase == .active, errors.entries.contains(where: { $0.kind == .microphone }) else { return }
+                errors.microphone(granted: MicrophonePermission.status == .granted)
+            }
+            .onChange(of: microphoneState) { old, new in
+                // Отказ в ответ на звонок сразу показывает подсказку, как модалка веб-клиента.
+                if new == .active, old != .active { isShown = true }
+            }
+            .onChange(of: dependencies.calls.phase) { _, phase in
+                switch phase {
+                case .active, .ringing: errors.mediaConnected()
+                case let .failed(message): reportIfConnection(message)
+                default: break
+                }
+            }
+            .onChange(of: dependencies.groupCalls.phase) { _, phase in
+                switch phase {
+                case .active: errors.mediaConnected()
+                case let .failed(message): reportIfConnection(message)
+                default: break
+                }
+            }
+            .onChange(of: dependencies.roomVoice.phase) { _, phase in
+                switch phase {
+                case .active: errors.mediaConnected()
+                case let .failed(message): reportIfConnection(message)
+                default: break
+                }
+            }
+    }
+
+    private var microphoneState: ConnectionErrorEntry.State? {
+        errors.entries.first { $0.kind == .microphone }?.state
+    }
+
+    private func reportIfConnection(_ message: String) {
+        guard ConnectionErrorsModel.isConnectionFailure(message) else { return }
+        Task { await errors.reportMediaConnectionFailure() }
     }
 }
