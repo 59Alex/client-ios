@@ -21,6 +21,8 @@ struct ChatScreen: View {
     @State private var isPhotoPickerShown = false
     @State private var isFileImporterShown = false
     @State private var previewURL: URL?
+    @State private var isBulkDeleteShown = false
+    @State private var isEmojiShown = false
     @FocusState private var isInputFocused: Bool
     @Environment(\.mediaLoader) private var mediaLoader
 
@@ -52,7 +54,11 @@ struct ChatScreen: View {
                     messageList
                 }
             }
-            inputBar
+            if model.isSelecting {
+                selectionBar
+            } else {
+                inputBar
+            }
         }
         .background(Palette.chat)
         .navigationTitle(model.title)
@@ -162,6 +168,9 @@ struct ChatScreen: View {
                             message: message,
                             isOwn: model.isOwn(message),
                             showAuthor: model.kind == .group,
+                            isSelecting: model.isSelecting,
+                            isSelected: model.selectedIds.contains(message.id),
+                            onSelect: { model.toggleSelection(message.id) },
                             onOpenAttachment: { open($0) },
                             onRetry: { Task { await model.retry(message.id) } },
                             onDiscard: { model.discardFailed(message.id) },
@@ -189,6 +198,33 @@ struct ChatScreen: View {
                     proxy.scrollTo(newest, anchor: .bottom)
                 }
             }
+        }
+    }
+
+    /// Панель выделения (`Chat.tsx`): число выбранных, жирный, подчёркнутый, маркер, удаление.
+    private var selectionBar: some View {
+        HStack(spacing: 4) {
+            ShellIconButton(systemImage: "xmark", label: "Отменить выделение", identifier: "chat.selection.cancel") { model.clearSelection() }
+            Text("Выбрано: \(model.selectedIds.count)")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Palette.textPrimary)
+                .accessibilityIdentifier("chat.selection.count")
+            Spacer()
+            ShellIconButton(systemImage: "bold", label: "Жирный", identifier: "chat.format.bold") { Task { await model.format(.bold) } }
+            ShellIconButton(systemImage: "underline", label: "Подчеркнуть", identifier: "chat.format.underline") { Task { await model.format(.underline) } }
+            ShellIconButton(systemImage: "highlighter", label: "Маркер", identifier: "chat.format.marker") {
+                Task { await model.format(.marker(color: ChatModel.TextStyle.markerColor)) }
+            }
+            if model.canDeleteSelection {
+                ShellIconButton(systemImage: "trash", label: "Удалить выбранные", identifier: "chat.selection.delete", tint: Palette.danger) { isBulkDeleteShown = true }
+            }
+        }
+        .padding(.horizontal, 8)
+        .frame(minHeight: 60)
+        .background(Palette.chrome)
+        .overlay(alignment: .top) { Rectangle().fill(Palette.divider).frame(height: 1) }
+        .confirmationDialog("Удалить выбранные сообщения?", isPresented: $isBulkDeleteShown, titleVisibility: .visible) {
+            Button("Удалить: \(model.selectedIds.count)", role: .destructive) { Task { await model.deleteSelected() } }
         }
     }
 
@@ -240,6 +276,21 @@ struct ChatScreen: View {
                 .overlay { RoundedRectangle(cornerRadius: 22).strokeBorder(isInputFocused ? Palette.accent : .clear) }
                 .disabled(model.isPartnerBanned)
                 .accessibilityIdentifier("chat.input")
+
+            Button { isEmojiShown = true } label: {
+                Image(systemName: "face.smiling")
+                    .font(.title3)
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(Palette.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(model.isPartnerBanned)
+            .accessibilityLabel("Открыть смайлики")
+            .accessibilityIdentifier("chat.emoji")
+            .sheet(isPresented: $isEmojiShown) {
+                EmojiPickerSheet { model.draft += $0 }
+                    .presentationDetents([.medium, .large])
+            }
 
             Button {
                 Task { await model.send() }
@@ -465,6 +516,9 @@ private struct MessageRow: View {
     let message: ChatMessage
     let isOwn: Bool
     let showAuthor: Bool
+    var isSelecting = false
+    var isSelected = false
+    var onSelect: () -> Void = {}
     let onOpenAttachment: (ChatAttachment) -> Void
     let onRetry: () -> Void
     let onDiscard: () -> Void
@@ -475,10 +529,21 @@ private struct MessageRow: View {
             CallSummaryPill(summary: summary, time: message.createdAt)
         } else {
             HStack {
+                if isSelecting {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(isSelected ? Palette.accent : Palette.textSecondary)
+                        .accessibilityHidden(true)
+                }
                 if isOwn { Spacer(minLength: 48) }
                 bubble
+                    .allowsHitTesting(!isSelecting)
                 if !isOwn { Spacer(minLength: 48) }
             }
+            .contentShape(Rectangle())
+            .onTapGesture { if isSelecting { onSelect() } }
+            .background(isSelected ? Palette.accent.opacity(0.12) : .clear)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
         }
     }
 
@@ -536,6 +601,9 @@ private struct MessageRow: View {
         .contextMenu {
             if !message.text.isEmpty {
                 Button("Копировать", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.text }
+            }
+            if message.delivery == .sent, !message.id.hasPrefix("local-") {
+                Button("Выделить", systemImage: "checkmark.circle", action: onSelect)
             }
             switch message.delivery {
             case .failed:

@@ -59,7 +59,17 @@ public actor FakeChatAPI: ChatAPI {
         return id
     }
 
+    public private(set) var diapasons: [(messageId: String, diapason: TextDiapason)] = []
+    public var failDeleteIds: Set<String> = []
+    public func setFailDeleteIds(_ ids: Set<String>) { failDeleteIds = ids }
+
+    public func addDiapason(messageId: String, diapason: TextDiapason) async throws -> String {
+        diapasons.append((messageId, diapason))
+        return "diapason-\(diapasons.count)"
+    }
+
     public func delete(messageId: String) async throws {
+        if failDeleteIds.contains(messageId) { throw URLError(.notConnectedToInternet) }
         deleted.append(messageId)
         for key in messagesByRoom.keys {
             messagesByRoom[key]?.removeAll { $0.id == messageId }

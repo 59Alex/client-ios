@@ -70,6 +70,8 @@ public protocol ChatAPI: Sendable {
     func history(_ kind: ChatKind, roomId: String, page: Int) async throws -> MessagePage
     func send(_ kind: ChatKind, message: OutgoingMessage) async throws -> String
     func delete(messageId: String) async throws
+    /// Оформление части текста: `POST /api/chat-message/{id}/text-diapasons`, в ответ id диапазона.
+    func addDiapason(messageId: String, diapason: TextDiapason) async throws -> String
     func textToken(_ kind: ChatKind, userId: String, roomId: String) async throws -> String
     func notificationSummary() async throws -> NotificationSummary
     func markRead(messageIds: [String]) async throws
@@ -128,6 +130,17 @@ public struct RemoteChatAPI: ChatAPI {
 
     public func delete(messageId: String) async throws {
         try HTTPClient.requireSuccess(try await main.send(method: "POST", path: "/api/chat-message/delete?messageId=\(Self.query(messageId))", body: nil))
+    }
+
+    public func addDiapason(messageId: String, diapason: TextDiapason) async throws -> String {
+        let body = ChatSignal.DiapasonPayload(diapason)
+        let response = try await main.post("/api/chat-message/\(Self.path(messageId))/text-diapasons", json: DiapasonRequest(body))
+        try HTTPClient.requireSuccess(response)
+        if let string = try? JSONDecoder().decode(String.self, from: response.body) { return string }
+        if let object = try? JSONDecoder().decode(IdResponse.self, from: response.body) { return object.id }
+        let raw = String(decoding: response.body, as: UTF8.self).trimmingCharacters(in: CharacterSet(charactersIn: "\" \n"))
+        guard !raw.isEmpty else { throw APIError.decoding("пустой идентификатор диапазона") }
+        return raw
     }
 
     public func textToken(_ kind: ChatKind, userId: String, roomId: String) async throws -> String {
@@ -232,4 +245,32 @@ private struct TokenResponse: Decodable {
 
 private struct ReadRequest: Encodable, Sendable {
     let messageIds: [String]
+}
+
+/// Тело создания диапазона без `id`: `{type, from, to, color}` или `{type, from, to, state}`.
+struct DiapasonRequest: Encodable, Sendable {
+    let type: String
+    let from: Int
+    let to: Int
+    let color: String?
+    let state: WeightRange.State?
+
+    init(_ payload: ChatSignal.DiapasonPayload) {
+        type = payload.type
+        from = payload.from
+        to = payload.to
+        color = payload.color
+        state = payload.state
+    }
+
+    enum CodingKeys: String, CodingKey { case type, from, to, color, state }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encode(from, forKey: .from)
+        try container.encode(to, forKey: .to)
+        try container.encodeIfPresent(color, forKey: .color)
+        try container.encodeIfPresent(state, forKey: .state)
+    }
 }

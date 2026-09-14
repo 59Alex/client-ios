@@ -41,6 +41,50 @@ final class ChatFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testEmojiSelectionFormatAndDelete() throws {
+        let app = launchSignedIn()
+        let row = app.buttons["chats.row.room-qa-2"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+
+        let input = app.textFields["chat.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        input.tap()
+        input.typeText("Смайл ")
+        app.buttons["chat.emoji"].tap()
+        let search = app.textFields["emoji.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("пицца")
+        let pizza = app.buttons["emoji.🍕"]
+        XCTAssertTrue(pizza.waitForExistence(timeout: 5))
+        attachScreenshot("24-emoji")
+        pizza.tap()
+        app.buttons["emoji.done"].tap()
+        XCTAssertEqual(input.value as? String, "Смайл 🍕")
+        app.buttons["chat.send"].tap()
+
+        let sent = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Смайл 🍕'")).firstMatch
+        XCTAssertTrue(sent.waitForExistence(timeout: 5))
+        sent.press(forDuration: 1.0)
+        let select = app.buttons["Выделить"]
+        XCTAssertTrue(select.waitForExistence(timeout: 5))
+        select.tap()
+
+        let count = app.staticTexts["chat.selection.count"]
+        XCTAssertTrue(count.waitForExistence(timeout: 5))
+        XCTAssertEqual(count.label, "Выбрано: 1")
+        app.buttons["chat.format.bold"].tap()
+        attachScreenshot("25-selection")
+        app.buttons["chat.selection.delete"].tap()
+        let confirm = app.buttons["Удалить: 1"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertFalse(sent.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
     func testGroupsTabAndEmptyChat() throws {
         let app = launchSignedIn()
 
