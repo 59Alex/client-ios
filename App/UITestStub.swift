@@ -6,6 +6,7 @@ import ConnectCore
 import ConnectFeatures
 import ConnectInbox
 import ConnectRooms
+import ConnectSettings
 import ConnectNetworking
 import ConnectTestSupport
 import Foundation
@@ -212,6 +213,13 @@ enum UITestStub {
         func events(for request: URLRequest) -> AsyncThrowingStream<ServerSentEvent, any Error> {
             AsyncThrowingStream { _ in }
         }
+    }
+
+    /// `-ui-test-theme dracula`: тема оформления для скриншотов; без аргумента — тема по умолчанию.
+    static func appearance(arguments: [String]) -> AppearancePreferences {
+        guard let index = arguments.firstIndex(of: "-ui-test-theme"), index + 1 < arguments.count,
+              let theme = AppearanceTheme(rawValue: arguments[index + 1]) else { return .standard }
+        return AppearancePreferences.standard.selecting(theme)
     }
 
     static func makeTokenStore(arguments: [String]) -> InMemoryTokenStore {

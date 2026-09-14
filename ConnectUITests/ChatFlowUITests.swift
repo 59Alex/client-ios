@@ -11,7 +11,7 @@ final class ChatFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-stub", "-ui-test-signed-in"]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Чаты"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.tab.chats"].waitForExistence(timeout: 10))
         return app
     }
 
@@ -44,7 +44,7 @@ final class ChatFlowUITests: XCTestCase {
     func testGroupsTabAndEmptyChat() throws {
         let app = launchSignedIn()
 
-        app.tabBars.buttons["Группы"].tap()
+        app.buttons["home.tab.groups"].tap()
         let group = app.buttons["chats.row.group-1"]
         XCTAssertTrue(group.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["2 изображения"].exists)
@@ -57,7 +57,7 @@ final class ChatFlowUITests: XCTestCase {
     @MainActor
     func testFindAddContactAndOpenChat() throws {
         let app = launchSignedIn()
-        app.tabBars.buttons["Контакты"].tap()
+        app.buttons["home.tab.contacts"].tap()
 
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10))
@@ -83,7 +83,7 @@ final class ChatFlowUITests: XCTestCase {
         write.tap()
 
         XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.tabBars.buttons["Чаты"].isSelected)
+        XCTAssertFalse(app.buttons["home.tab.contacts"].exists)
         attachScreenshot("32-chat-from-contact")
     }
 

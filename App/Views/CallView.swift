@@ -127,7 +127,7 @@ private struct RoundCallButton: View {
     let title: String
     let systemImage: String
     let fill: Color
-    var foreground: Color = Palette.onAccent
+    var foreground: Color?
     let identifier: String
     let action: () -> Void
 
@@ -136,7 +136,7 @@ private struct RoundCallButton: View {
             Image(systemName: systemImage)
                 .font(.title2.weight(.semibold))
                 .frame(width: 68, height: 68)
-                .foregroundStyle(foreground)
+                .foregroundStyle(foreground ?? Palette.onAccent)
                 .background(fill, in: Circle())
                 .overlay { Circle().strokeBorder(Palette.border) }
         }

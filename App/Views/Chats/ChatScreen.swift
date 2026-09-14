@@ -54,9 +54,11 @@ struct ChatScreen: View {
             }
             inputBar
         }
-        .background(Palette.canvas)
+        .background(Palette.chat)
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Palette.chrome, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
@@ -77,7 +79,11 @@ struct ChatScreen: View {
                         Task { await startCall(model.roomId, model.title, model.members.map(\.userId)) }
                     } label: {
                         Image(systemName: "phone")
+                            .foregroundStyle(Palette.success)
+                            .frame(width: 44, height: 36)
+                            .background(Palette.callFill, in: RoundedRectangle(cornerRadius: 10))
                     }
+                    .buttonStyle(.plain)
                     .disabled(!(groupTools?.canCall() ?? false))
                     .accessibilityLabel("Позвонить в группу")
                     .accessibilityIdentifier("chat.groupCall")
@@ -203,7 +209,8 @@ struct ChatScreen: View {
             inputRow
         }
         .padding(.vertical, 8)
-        .background(Palette.canvas)
+        .background(Palette.chrome)
+        .overlay(alignment: .top) { Rectangle().fill(Palette.divider).frame(height: 1) }
     }
 
     private var inputRow: some View {
@@ -215,9 +222,8 @@ struct ChatScreen: View {
                 Image(systemName: "paperclip")
                     .font(.body.weight(.semibold))
                     .frame(width: 44, height: 44)
-                    .foregroundStyle(Palette.textPrimary)
-                    .background(Palette.surface, in: Circle())
-                    .overlay { Circle().strokeBorder(Palette.border) }
+                    .foregroundStyle(Palette.textSecondary)
+                    .background(Palette.canvas, in: Circle())
             }
             .disabled(!model.canAttach)
             .accessibilityLabel("Прикрепить")
@@ -230,8 +236,8 @@ struct ChatScreen: View {
                 .padding(.vertical, 10)
                 .frame(minHeight: 44)
                 .foregroundStyle(Palette.textPrimary)
-                .background(Palette.surface, in: RoundedRectangle(cornerRadius: 22))
-                .overlay { RoundedRectangle(cornerRadius: 22).strokeBorder(isInputFocused ? Palette.accent : Palette.border) }
+                .background(Palette.chrome, in: RoundedRectangle(cornerRadius: 22))
+                .overlay { RoundedRectangle(cornerRadius: 22).strokeBorder(isInputFocused ? Palette.accent : .clear) }
                 .disabled(model.isPartnerBanned)
                 .accessibilityIdentifier("chat.input")
 
@@ -442,12 +448,14 @@ private struct DayDivider: View {
     var body: some View {
         Text(text)
             .font(.caption.weight(.semibold))
-            .foregroundStyle(highlighted ? Palette.onAccent : Palette.textSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(highlighted ? Palette.accent : Palette.surface, in: Capsule())
-            .overlay { if !highlighted { Capsule().strokeBorder(Palette.border) } }
+            .foregroundStyle(highlighted ? Palette.accent : Palette.textPrimary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(highlighted ? Color.clear : Palette.surface.opacity(0.85), in: Capsule())
             .frame(maxWidth: .infinity)
+            .background {
+                if highlighted { Rectangle().fill(Palette.accent.opacity(0.6)).frame(height: 1).padding(.horizontal, 6) }
+            }
             .padding(.vertical, 6)
             .accessibilityAddTraits(.isHeader)
     }
@@ -474,12 +482,15 @@ private struct MessageRow: View {
         }
     }
 
+    /// Пузырь веб-клиента: 10px со срезанным нижним левым углом 3px.
+    private static let bubbleShape = UnevenRoundedRectangle(topLeadingRadius: 10, bottomLeadingRadius: 3, bottomTrailingRadius: 10, topTrailingRadius: 10)
+
     private var bubble: some View {
         VStack(alignment: .leading, spacing: 4) {
             if showAuthor, !isOwn {
                 Text(message.guestName ?? message.username)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Palette.accent)
+                    .foregroundStyle(Palette.messageName)
             }
             ForEach(message.attachments, id: \.self) { attachment in
                 Button { onOpenAttachment(attachment) } label: {
@@ -498,7 +509,7 @@ private struct MessageRow: View {
             }
             if !message.text.isEmpty {
                 Text(FormattedMessageText.attributed(message))
-                    .foregroundStyle(isOwn ? Palette.onAccent : Palette.textPrimary)
+                    .foregroundStyle(isOwn ? Palette.onOwnBubble : Palette.onOtherBubble)
                     .textSelection(.enabled)
             }
             HStack(spacing: 4) {
@@ -514,12 +525,12 @@ private struct MessageRow: View {
                     EmptyView()
                 }
             }
-            .foregroundStyle(isOwn ? Palette.onAccent.opacity(0.8) : Palette.textSecondary)
+            .foregroundStyle((isOwn ? Palette.onOwnBubble : Palette.onOtherBubble).opacity(0.7))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(isOwn ? Palette.accent : Palette.surface, in: RoundedRectangle(cornerRadius: Radius.panel))
-        .overlay { if !isOwn { RoundedRectangle(cornerRadius: Radius.panel).strokeBorder(Palette.border) } }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(isOwn ? Palette.ownBubble : Palette.otherBubble, in: Self.bubbleShape)
+        .overlay { Self.bubbleShape.strokeBorder((isOwn ? Palette.onOwnBubble : Palette.onOtherBubble).opacity(0.1)) }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("chat.message.\(message.id)")
         .contextMenu {

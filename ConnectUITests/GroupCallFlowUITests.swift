@@ -11,14 +11,14 @@ final class GroupCallFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-stub", "-ui-test-signed-in"] + extra
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Группы"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.tab.groups"].waitForExistence(timeout: 10))
         return app
     }
 
     @MainActor
     func testStartGroupCallFromChat() throws {
         let app = launch()
-        app.tabBars.buttons["Группы"].tap()
+        app.buttons["home.tab.groups"].tap()
         let group = app.buttons["chats.row.group-1"]
         XCTAssertTrue(group.waitForExistence(timeout: 10))
         group.tap()
@@ -40,7 +40,7 @@ final class GroupCallFlowUITests: XCTestCase {
     @MainActor
     func testActiveCallBannerJoin() throws {
         let app = launch()
-        app.tabBars.buttons["Группы"].tap()
+        app.buttons["home.tab.groups"].tap()
         app.buttons["chats.row.group-1"].tap()
 
         let join = app.buttons["chat.joinCall"]
@@ -67,8 +67,7 @@ final class GroupCallFlowUITests: XCTestCase {
     @MainActor
     func testJoinVoiceChannel() throws {
         let app = launch()
-        app.tabBars.buttons["Комнаты"].tap()
-        app.buttons["rooms.row.room-1"].tap()
+        app.buttons["rail.room.room-1"].tap()
 
         let voice = app.buttons["room.voice.channel-voice"]
         XCTAssertTrue(voice.waitForExistence(timeout: 10))
@@ -76,11 +75,14 @@ final class GroupCallFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'QA Wallpaper Two'")).firstMatch.waitForExistence(timeout: 10))
         voice.tap()
 
-        XCTAssertTrue(app.buttons["voice.leave"].waitForExistence(timeout: 10))
+        let leave = app.buttons["voice.leave"]
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: leave)
+        waitForExpectations(timeout: 10)
         attachScreenshot("72-voice-channel")
         app.buttons["voice.mute"].tap()
-        app.buttons["voice.leave"].tap()
-        XCTAssertFalse(app.buttons["voice.leave"].waitForExistence(timeout: 3))
+        leave.tap()
+        expectation(for: NSPredicate(format: "isEnabled == false"), evaluatedWith: leave)
+        waitForExpectations(timeout: 5)
     }
 
     @MainActor

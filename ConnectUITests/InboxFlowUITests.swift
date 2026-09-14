@@ -11,7 +11,7 @@ final class InboxFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-stub", "-ui-test-signed-in"]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Чаты"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.tab.chats"].waitForExistence(timeout: 10))
         return app
     }
 
@@ -45,7 +45,6 @@ final class InboxFlowUITests: XCTestCase {
         accept.tap()
 
         XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.tabBars.buttons["Группы"].isSelected)
         XCTAssertTrue(app.buttons["chat.members"].exists)
         app.buttons["chat.members"].tap()
         XCTAssertTrue(app.buttons["group.invite.qa_wallpaper_2"].waitForExistence(timeout: 5))
@@ -57,7 +56,7 @@ final class InboxFlowUITests: XCTestCase {
     @MainActor
     func testCreateGroup() throws {
         let app = launchSignedIn()
-        app.tabBars.buttons["Группы"].tap()
+        app.buttons["home.tab.groups"].tap()
 
         let create = app.buttons["groups.create"]
         XCTAssertTrue(create.waitForExistence(timeout: 10))

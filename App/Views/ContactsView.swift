@@ -18,7 +18,10 @@ struct ContactsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Palette.canvas)
                 .navigationTitle("Контакты")
-                .searchable(text: Bindable(model).searchText, prompt: "Логин или телефон")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(Palette.chrome, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .searchable(text: Bindable(model).searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Найти контакт")
                 .onSubmit(of: .search) { Task { await model.search() } }
         }
         .task { await model.load() }
@@ -59,9 +62,11 @@ struct ContactsView: View {
                         Task { await calls.call(contact) }
                     }
                     .contextMenu { actions(for: contact) }
-                    .listRowBackground(Palette.surface)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
             }
+            .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .refreshable { await model.load() }
             .accessibilityIdentifier("contacts.list")
@@ -266,7 +271,7 @@ struct Avatar: View {
                 .font(.system(size: size * 0.36, weight: .semibold))
                 .foregroundStyle(Palette.textPrimary)
                 .frame(width: size, height: size)
-                .background(Palette.canvas)
+                .background(Palette.surface)
         }
             .frame(width: size, height: size)
             .clipShape(Circle())
@@ -274,9 +279,9 @@ struct Avatar: View {
             .overlay(alignment: .bottomTrailing) {
                 if status == .online {
                     Circle()
-                        .fill(Palette.accent)
+                        .fill(Palette.success)
                         .frame(width: size * 0.26, height: size * 0.26)
-                        .overlay { Circle().strokeBorder(Palette.surface, lineWidth: 2) }
+                        .overlay { Circle().strokeBorder(Palette.canvas, lineWidth: 2) }
                 }
             }
             .accessibilityHidden(true)

@@ -16,13 +16,8 @@ struct HomeView: View {
 
     private var calls: P2PCallModel { dependencies.calls }
     @State private var navigation = AppNavigation()
-    @State private var isInboxShown = false
     @State private var isCreateGroupShown = false
     @State private var isProfileShown = false
-
-    private var inboxBadge: Int {
-        dependencies.unread.summary.unread + dependencies.invitations.pendingCount
-    }
 
     private var groupTools: GroupTools {
         let contacts = dependencies.contacts
@@ -62,84 +57,73 @@ struct HomeView: View {
         dependencies.directory.cards.mapValues(\.displayName)
     }
 
+    @State private var inboxSection: InboxView.Section?
+    @State private var isRoomActionsShown = false
+    @State private var isCreateRoomShown = false
+    @State private var isJoinRoomShown = false
+    @State private var myCard: Contact?
+
+    private var tabItems: [HomeTabBar.Item] {
+        let unread = dependencies.unread
+        return [
+            .init(tab: .chats, title: "Чаты", systemImage: "envelope", identifier: "home.tab.chats", badge: unread.unreadCount(kind: .p2p)),
+            .init(tab: .groups, title: "Группы", systemImage: "person.2", identifier: "home.tab.groups", badge: unread.unreadCount(kind: .group)),
+            .init(tab: .feeds, title: "Каналы", systemImage: "doc.text", identifier: "home.tab.feeds", badge: 0),
+            .init(tab: .contacts, title: "Контакты", systemImage: "person.2.badge.plus", identifier: "home.tab.contacts", badge: 0),
+        ]
+    }
+
+    private var contactStatuses: [String: UserStatus] {
+        guard case let .loaded(list) = dependencies.contacts.state else { return [:] }
+        return Dictionary(list.map { ($0.userId, $0.status) }, uniquingKeysWith: { first, _ in first })
+    }
+
     var body: some View {
         ZStack {
-            TabView(selection: $navigation.tab) {
-                ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.chatsPath, inboxBadge: inboxBadge, onOpenInbox: { isInboxShown = true }, onOpenProfile: { isProfileShown = true }, groupTools: groupTools)
-                    .tabItem { Label("Чаты", systemImage: "bubble.left.and.bubble.right") }
-                    .badge(dependencies.unread.unreadCount(kind: .p2p))
-                    .tag(AppNavigation.Tab.chats)
-                ChatListView(model: dependencies.groupChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.groupsPath, inboxBadge: inboxBadge, onOpenInbox: { isInboxShown = true }, onCreateGroup: { isCreateGroupShown = true }, groupTools: groupTools)
-                    .tabItem { Label("Группы", systemImage: "person.3") }
-                    .badge(dependencies.unread.unreadCount(kind: .group))
-                    .tag(AppNavigation.Tab.groups)
-                RoomsListView(
-                    model: dependencies.rooms,
-                    unread: dependencies.unread,
-                    makeRoom: dependencies.makeRoom,
-                    makeCalendar: dependencies.makeCalendar,
-                    makeChat: dependencies.makeChat,
-                    groupTools: groupTools,
-                    inviteToRoom: { roomId, contact in
-                        (try? await dependencies.inbox.invite(kind: .room, targetId: roomId, recipientUserId: contact.userId)) != nil
-                    },
-                    origin: dependencies.uiOrigin,
-                    voice: dependencies.roomVoice,
-                    directory: dependencies.directory,
-                    canJoinVoice: { !calls.isInCall && !dependencies.groupCalls.isInCall },
-                    path: $navigation.roomsPath
-                )
-                    .tabItem { Label("Комнаты", systemImage: "square.grid.2x2") }
-                    .badge(dependencies.unread.unreadCount(kind: .channel))
-                    .tag(AppNavigation.Tab.rooms)
-                FeedsListView(model: dependencies.feeds, unread: dependencies.unread, makeFeed: dependencies.makeFeed)
-                    .tabItem { Label("Каналы", systemImage: "megaphone") }
-                    .tag(AppNavigation.Tab.feeds)
-                ContactsView(model: dependencies.contacts, calls: calls, myUsername: dependencies.user.username) { route in
-                    navigation.open(route)
-                }
-                    .tabItem { Label("Контакты", systemImage: "person.2") }
-                    .tag(AppNavigation.Tab.contacts)
-            }
-            .environment(\.mediaLoader, dependencies.mediaLoader)
-            .environment(\.greetingLookup, { [settings = dependencies.settings] userId in
-                try? await settings.greeting(userId: userId)
-            })
-            .sheet(isPresented: $isInboxShown) {
-                InboxView(notifications: dependencies.notifications, invitations: dependencies.invitations) { route in
-                    Task {
-                        if route.kind == .group { await dependencies.groupChats.load() }
-                        navigation.open(route)
-                    }
-                } onOpenRoom: { roomId, name in
-                    Task {
-                        await dependencies.rooms.load()
-                        navigation.tab = .rooms
-                        navigation.roomsPath = [.room(id: roomId, name: name)]
-                    }
-                }
+            shell
                 .environment(\.mediaLoader, dependencies.mediaLoader)
-            }
-            .sheet(isPresented: $isProfileShown) {
-                ProfileView(dependencies: dependencies, session: session, onLogout: logout)
+                .environment(\.greetingLookup, { [settings = dependencies.settings] userId in
+                    try? await settings.greeting(userId: userId)
+                })
+                .sheet(item: $inboxSection) { section in
+                    InboxView(notifications: dependencies.notifications, invitations: dependencies.invitations, initialSection: section) { route in
+                        Task {
+                            if route.kind == .group { await dependencies.groupChats.load() }
+                            navigation.open(route)
+                        }
+                    } onOpenRoom: { roomId, name in
+                        Task {
+                            await dependencies.rooms.load()
+                            navigation.openRoom(id: roomId, name: name)
+                        }
+                    }
                     .environment(\.mediaLoader, dependencies.mediaLoader)
-            }
-            .sheet(isPresented: $isCreateGroupShown) {
-                CreateGroupSheet(model: CreateGroupModel(me: dependencies.user.userId, api: dependencies.inbox), contacts: groupTools.contacts()) {
-                    Task { await dependencies.groupChats.load() }
                 }
-                .environment(\.mediaLoader, dependencies.mediaLoader)
-            }
-            .accessibilityHidden(calls.isInCall)
-
-            if dependencies.roomVoice.isInCall, !calls.isInCall, !dependencies.groupCalls.isInCall {
-                VStack {
-                    Spacer()
-                    VoiceChannelBar(model: dependencies.roomVoice)
-                        .padding(.bottom, 58)
+                .sheet(isPresented: $isProfileShown) {
+                    ProfileView(dependencies: dependencies, session: session, onLogout: logout)
+                        .environment(\.mediaLoader, dependencies.mediaLoader)
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+                .sheet(isPresented: $isCreateGroupShown) {
+                    CreateGroupSheet(model: CreateGroupModel(me: dependencies.user.userId, api: dependencies.inbox), contacts: groupTools.contacts()) {
+                        Task { await dependencies.groupChats.load() }
+                    }
+                    .environment(\.mediaLoader, dependencies.mediaLoader)
+                }
+                .sheet(isPresented: $isCreateRoomShown) {
+                    TextPromptSheet(title: "Новая комната", placeholder: "Название", actionTitle: "Создать", identifier: "rooms.create") { name in
+                        await dependencies.rooms.createRoom(name: name)
+                    }
+                }
+                .sheet(isPresented: $isJoinRoomShown) {
+                    TextPromptSheet(title: "Войти по приглашению", placeholder: "Ссылка-приглашение", actionTitle: "Войти", identifier: "rooms.join") { link in
+                        await dependencies.rooms.join(link: link)
+                    }
+                }
+                .confirmationDialog("Комнаты", isPresented: $isRoomActionsShown) {
+                    Button("Создать комнату") { isCreateRoomShown = true }
+                    Button("Войти по приглашению") { isJoinRoomShown = true }
+                }
+                .accessibilityHidden(calls.isInCall || dependencies.groupCalls.isInCall)
 
             // Слой, а не fullScreenCover: состояние звонка целиком в модели, закрывать экран жестом нельзя.
             if calls.isInCall {
@@ -164,12 +148,15 @@ struct HomeView: View {
             calls.onCallSummary = { await summaries.publish($0) }
             groupCalls.onCallSummary = { await summaries.publish($0) }
         }
+        .task { await dependencies.appearance.start(deviceId: dependencies.deviceId) }
         .task { await dependencies.status.keepAlive(userId: dependencies.user.userId) }
         .task { await calls.runIncomingCalls() }
         .task { await dependencies.groupCalls.runIncomingCalls() }
         .task { await dependencies.unread.run() }
         .task { await dependencies.invitations.load() }
         .task { await dependencies.contacts.load() }
+        .task { await dependencies.rooms.load() }
+        .task { myCard = try? await dependencies.users.card(userId: dependencies.user.userId) }
         .task(id: dependencies.contacts.state) {
             if case let .loaded(list) = dependencies.contacts.state { dependencies.directory.remember(list) }
         }
@@ -186,8 +173,83 @@ struct HomeView: View {
         }
     }
 
+    /// Раскладка мобильного веб-клиента: рейл комнат, верхняя панель, раздел, панель пользователя и вкладки.
+    private var shell: some View {
+        HStack(spacing: 0) {
+            if navigation.isRailShown && !navigation.isDeep {
+                RoomRail(
+                    rooms: dependencies.rooms.rooms,
+                    selectedRoomId: navigation.tab == .rooms ? navigation.room?.id : nil,
+                    unreadCount: { dependencies.rooms.unreadCount($0, unread: dependencies.unread) },
+                    onHome: { navigation.goHome() },
+                    onRoom: { navigation.openRoom(id: $0.id, name: $0.name) },
+                    onAdd: { isRoomActionsShown = true }
+                )
+                .transition(.move(edge: .leading))
+            }
+            VStack(spacing: 0) {
+                HomeTopBar(
+                    isRailShown: navigation.isRailShown,
+                    invitations: dependencies.invitations.pendingCount,
+                    notifications: dependencies.unread.summary.unread,
+                    onMenu: { withAnimation(.easeOut(duration: 0.2)) { navigation.isRailShown.toggle() } },
+                    onInvitations: { inboxSection = .invitations },
+                    onNotifications: { inboxSection = .notifications }
+                )
+                section
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if !navigation.isDeep {
+                    UserPanel(user: dependencies.user, avatarKey: myCard?.avatarKey, voice: dependencies.roomVoice) { isProfileShown = true }
+                        .background(Palette.canvas)
+                    if navigation.tab != .rooms {
+                        HomeTabBar(items: tabItems, selection: $navigation.tab)
+                    }
+                }
+            }
+            .background(Palette.canvas.ignoresSafeArea(edges: .bottom))
+        }
+        .background(Palette.chrome.ignoresSafeArea())
+        .animation(.easeOut(duration: 0.2), value: navigation.isDeep)
+    }
+
+    @ViewBuilder
+    private var section: some View {
+        switch navigation.tab {
+        case .chats:
+            ChatListView(model: dependencies.p2pChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.chatsPath, groupTools: groupTools, statusOf: { contactStatuses[$0] })
+        case .groups:
+            ChatListView(model: dependencies.groupChats, unread: dependencies.unread, makeChat: dependencies.makeChat, path: $navigation.groupsPath, onCreateGroup: { isCreateGroupShown = true }, groupTools: groupTools)
+        case .rooms:
+            RoomsListView(
+                model: dependencies.rooms,
+                unread: dependencies.unread,
+                makeRoom: dependencies.makeRoom,
+                makeCalendar: dependencies.makeCalendar,
+                makeChat: dependencies.makeChat,
+                groupTools: groupTools,
+                inviteToRoom: { roomId, contact in
+                    (try? await dependencies.inbox.invite(kind: .room, targetId: roomId, recipientUserId: contact.userId)) != nil
+                },
+                origin: dependencies.uiOrigin,
+                voice: dependencies.roomVoice,
+                directory: dependencies.directory,
+                canJoinVoice: { !calls.isInCall && !dependencies.groupCalls.isInCall },
+                room: navigation.room,
+                onOpenRoom: { navigation.openRoom(id: $0.id, name: $0.name) },
+                path: $navigation.roomsPath
+            )
+        case .feeds:
+            FeedsListView(model: dependencies.feeds, unread: dependencies.unread, makeFeed: dependencies.makeFeed)
+        case .contacts:
+            ContactsView(model: dependencies.contacts, calls: calls, myUsername: dependencies.user.username) { route in
+                navigation.open(route)
+            }
+        }
+    }
+
     private func logout() async {
         isProfileShown = false
+        dependencies.appearance.stop()
         await calls.hangUp()
         await dependencies.groupCalls.hangUp()
         await dependencies.roomVoice.leave()
@@ -244,29 +306,51 @@ private struct ProfileView: View {
                     LabeledContent("Email", value: user.email)
                     LabeledContent("Статус", value: user.status.title)
                 }
-                .listRowBackground(Palette.surface)
+                .listRowBackground(Palette.canvas)
 
-                Section("Настройки") {
-                    NavigationLink("Аккаунт") {
+                Section {
+                    NavigationLink {
                         AccountSettingsView(model: AccountSettingsModel(userId: user.userId, api: dependencies.settings))
+                    } label: {
+                        SettingsRow(title: "Аккаунт", systemImage: "checkmark.shield")
                     }
                     .accessibilityIdentifier("settings.account")
-                    NavigationLink("Уведомления") {
+                    NavigationLink {
                         NotificationSoundsView(model: NotificationSoundsModel(userId: user.userId, api: dependencies.settings))
+                    } label: {
+                        SettingsRow(title: "Уведомления", systemImage: "bell")
                     }
                     .accessibilityIdentifier("settings.sounds")
-                    NavigationLink("Голос и видео") {
-                        VoiceSettingsView(model: VoiceSettingsModel(userId: user.userId, deviceId: dependencies.deviceId, api: dependencies.settings))
-                    }
-                    .accessibilityIdentifier("settings.voice")
-                    NavigationLink("Приветственный стикер") {
+                    NavigationLink {
                         GreetingSettingsView(model: GreetingModel(userId: user.userId, api: dependencies.settings)) { data, filename, mime in
                             try await dependencies.files.upload(data: data, filename: filename, mimeType: mime, bucket: .userGallery, key: user.userId, userId: user.userId, username: user.username).urlS3
                         }
+                    } label: {
+                        SettingsRow(title: "Приветственный стикер", systemImage: "face.smiling")
                     }
                     .accessibilityIdentifier("settings.greeting")
+                } header: {
+                    SettingsSectionHeader(title: "Пользователь")
                 }
-                .listRowBackground(Palette.surface)
+                .listRowBackground(Palette.canvas)
+
+                Section {
+                    NavigationLink {
+                        AppearanceSettingsView(model: dependencies.appearance)
+                    } label: {
+                        SettingsRow(title: "Оформление", systemImage: "paintpalette")
+                    }
+                    .accessibilityIdentifier("settings.appearance")
+                    NavigationLink {
+                        VoiceSettingsView(model: VoiceSettingsModel(userId: user.userId, deviceId: dependencies.deviceId, api: dependencies.settings))
+                    } label: {
+                        SettingsRow(title: "Голос и видео", systemImage: "headphones")
+                    }
+                    .accessibilityIdentifier("settings.voice")
+                } header: {
+                    SettingsSectionHeader(title: "Приложение")
+                }
+                .listRowBackground(Palette.canvas)
 
                 if let gallery = card?.photoKeys, gallery.count > 1 {
                     Section("Фото") {
@@ -280,7 +364,7 @@ private struct ProfileView: View {
                             }
                         }
                     }
-                    .listRowBackground(Palette.surface)
+                    .listRowBackground(Palette.canvas)
                 }
 
                 Section {
@@ -289,11 +373,14 @@ private struct ProfileView: View {
                     }
                     .accessibilityIdentifier("profile.logout")
                 }
-                .listRowBackground(Palette.surface)
+                .listRowBackground(Palette.canvas)
             }
             .scrollContentBackground(.hidden)
-            .background(Palette.canvas)
-            .navigationTitle("Профиль и настройки")
+            .background(Palette.chrome)
+            .navigationTitle("Настройки")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Palette.chrome, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
         .task { card = try? await dependencies.users.card(userId: user.userId) }
         .onChange(of: avatarItem) { _, item in

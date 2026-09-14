@@ -9,7 +9,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Palette.canvas.ignoresSafeArea()
+            Palette.chrome.ignoresSafeArea()
 
             switch session.state {
             case .launching, .loadingUser:
@@ -31,6 +31,8 @@ struct RootView: View {
                 }
             }
         }
+        .tint(Palette.accent)
+        .preferredColorScheme(Palette.colorScheme)
         .task { await session.run() }
     }
 }
