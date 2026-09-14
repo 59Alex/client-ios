@@ -84,6 +84,14 @@ public struct CallClientData: Codable, Sendable, Equatable {
         return String(decoding: outer, as: UTF8.self)
     }
 
+    /// Плоская форма без обёртки `clientData`: так голосовой канал комнаты передаёт данные в фасад.
+    public func encodedFlat() -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes]
+        guard let data = try? encoder.encode(self) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     /// Разбирает и обёрнутую, и плоскую форму, а также `CLIENT%/%SERVER`.
     public static func decode(_ raw: String) -> CallClientData? {
         let candidate = raw.components(separatedBy: "%/%").first ?? raw

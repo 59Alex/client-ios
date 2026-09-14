@@ -39,6 +39,10 @@ public protocol CallRoom: SignalRoom {
     func setSpeakerOutput(_ enabled: Bool)
     /// Видеодорожка SDK для отрисовки; модели звонка её не разбирают.
     func remoteVideoTrack(trackId: String) -> AnyObject?
+    /// Камера одной видеодорожкой с именем по протоколу Connect (отдельное подключение трансляции).
+    func publishCamera(trackName: String) async throws
+    func localCameraTrack() -> AnyObject?
+    func switchCamera() async throws
 }
 
 /// Удалённый «поток» OpenVidu: дорожки участника с одним ключом `k`.

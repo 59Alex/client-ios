@@ -114,6 +114,10 @@ public actor FakeRoomVoiceAPI: RoomVoiceAPI {
         calls.append("speakeroff:\(off)")
     }
 
+    public func setStreamOn(_ on: Bool, channelId: String, userId: String) async throws {
+        calls.append("streamon:\(on)")
+    }
+
     public func leaveChannel(channelId: String, userId: String, sessionId: String?) async throws {
         calls.append("delete")
     }

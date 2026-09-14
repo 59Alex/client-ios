@@ -280,6 +280,13 @@ struct UserPanel: View {
             HStack(spacing: 4) {
                 Spacer()
                 ShellIconButton(systemImage: "gearshape", label: "Настройки", identifier: "profile.open", action: onSettings)
+                if inVoice {
+                    ShellIconButton(systemImage: voice.camera.isActive ? "video.fill" : "video", label: voice.camera.isActive ? "Выключить камеру" : "Включить камеру", identifier: "voice.camera", tint: voice.camera.isActive ? Palette.accent : nil) {
+                        Task {
+                            if voice.camera.isActive || (await CameraPermission.request()) { await voice.toggleCamera() }
+                        }
+                    }
+                }
                 ShellIconButton(systemImage: muted ? "mic.slash" : "mic", label: muted ? "Включить микрофон" : "Выключить микрофон", identifier: "voice.mute", tint: muted ? Palette.danger : nil) {
                     Task { await voice.toggleMute() }
                 }

@@ -92,6 +92,49 @@ struct P2PCallModelTests {
         #expect(model.phase != .idle)
     }
 
+    @Test("своя камера: отдельное подключение с данными трансляции, завершение звонка её закрывает")
+    func ownCamera() async throws {
+        let (model, box) = makeModel()
+        await model.call(peer)
+        let voiceRoom = try #require(box.rooms.last)
+        voiceRoom.emitRemoteAudio(userId: "peer")
+        await settle()
+
+        await model.toggleCamera()
+        #expect(model.camera.isOn)
+        #expect(box.rooms.count == 2)
+        let cameraRoom = try #require(box.rooms.last)
+        let rawCameraName = try #require(cameraRoom.publishedCameraName)
+        let name = try #require(TrackName.decode(rawCameraName))
+        #expect(!name.hasAudio && name.hasVideo)
+        let data = try #require(CallClientData.decode(name.clientData))
+        #expect(data.userId == "me")
+        #expect(data.streamType == "SHARE")
+        #expect(data.shareType == "WEB_CAMERA")
+        #expect(name.clientData.contains("clientData"))
+        #expect(model.camera.localTrack != nil)
+
+        await model.hangUp()
+        #expect(!model.camera.isActive)
+        #expect(cameraRoom.isDisconnected)
+    }
+
+    @Test("камеру нельзя включить без комнаты звонка; ошибка публикации показывается")
+    func cameraFailures() async throws {
+        let (idle, idleBox) = makeModel()
+        await idle.toggleCamera()
+        #expect(!idle.camera.isActive)
+        #expect(idleBox.rooms.isEmpty)
+
+        let share = CameraShare(makeRoom: {
+            let room = FakeCallRoom()
+            room.failCamera = true
+            return room
+        }, rtcUrl: URL(string: "wss://x")!)
+        #expect(await share.start(token: { "t" }) { _ in "{}" } == false)
+        #expect(share.state == .failed("Не удалось включить камеру"))
+    }
+
     @Test("собеседник снял аудиопоток — звонок завершается и удаляется")
     func remoteHangUp() async throws {
         let (model, box) = makeModel()

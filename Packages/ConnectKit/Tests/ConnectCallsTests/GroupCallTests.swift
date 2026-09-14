@@ -194,6 +194,48 @@ struct GroupCallTests {
         #expect(room.isDisconnected)
     }
 
+    @Test("камера в голосовом канале: отдельное подключение, streamon и publish_stream; выход её закрывает")
+    func roomVoiceCamera() async throws {
+        let api = FakeRoomVoiceAPI()
+        let rooms = GroupRoomBox()
+        let model = RoomVoiceModel(
+            me: me,
+            api: api,
+            rtcUrl: URL(string: "wss://rtc.cnnect.ru/livekit")!,
+            makeRoom: {
+                let room = FakeCallRoom()
+                rooms.rooms.append(room)
+                return room
+            },
+            sessionId: { "session-1" },
+            requestMicrophone: { true }
+        )
+        await model.join(channelId: "voice-1", name: "Голосовой")
+        await model.toggleCamera()
+
+        #expect(model.camera.isOn)
+        #expect(rooms.rooms.count == 2)
+        let voiceRoom = try #require(rooms.rooms.first)
+        let cameraRoom = try #require(rooms.rooms.last)
+        let rawCameraName = try #require(cameraRoom.publishedCameraName)
+        let name = try #require(TrackName.decode(rawCameraName))
+        #expect(!name.hasAudio && name.hasVideo)
+        let clientData = try #require(JSONSerialization.jsonObject(with: Data(name.clientData.utf8)) as? [String: Any])
+        #expect(clientData["streamType"] as? String == "SHARE")
+        #expect(clientData["shareType"] as? String == "WEB_CAMERA")
+        #expect(clientData["streamId"] as? String == model.camera.streamId)
+        #expect(clientData["clientData"] == nil)
+        #expect(await api.calls.contains("streamon:true"))
+        let announce = try #require(voiceRoom.sentPackets.last)
+        #expect(announce.type == "publish_stream")
+        #expect(announce.data.contains(#""streamId":"\#(model.camera.streamId ?? "")""#))
+
+        await model.toggleCamera()
+        #expect(!model.camera.isActive)
+        #expect(cameraRoom.isDisconnected)
+        #expect(await api.calls.last == "streamon:false")
+    }
+
     @Test("присутствие в голосовых каналах: снимок и слияние событий")
     func presence() {
         var presence = ChannelPresence()

@@ -47,6 +47,9 @@ struct CallView: View {
                 .padding(.bottom, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) {
+            LocalCameraPreview(camera: model.camera).padding(16)
+        }
         .background(Palette.canvas.ignoresSafeArea())
     }
 
@@ -93,7 +96,18 @@ struct CallView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .accessibilityIdentifier("call.close")
         default:
-            HStack(spacing: 32) {
+            HStack(spacing: 16) {
+                RoundCallButton(
+                    title: model.camera.isActive ? "Выключить камеру" : "Включить камеру",
+                    systemImage: model.camera.isActive ? "video.fill" : "video.slash.fill",
+                    fill: model.camera.isActive ? Palette.textPrimary : Palette.surface,
+                    foreground: model.camera.isActive ? Palette.canvas : Palette.textPrimary,
+                    identifier: "call.camera"
+                ) {
+                    Task {
+                        if model.camera.isActive || (await CameraPermission.request()) { await model.toggleCamera() }
+                    }
+                }
                 RoundCallButton(
                     title: model.isMuted ? "Включить микрофон" : "Выключить микрофон",
                     systemImage: model.isMuted ? "mic.slash.fill" : "mic.fill",

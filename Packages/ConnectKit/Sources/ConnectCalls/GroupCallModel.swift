@@ -16,6 +16,8 @@ public final class GroupCallModel {
     public private(set) var phase: Phase = .idle
     public private(set) var callId: String?
     public private(set) var groupChatId: String?
+    /// Своя камера отдельным подключением к комнате группового звонка.
+    public let camera: CameraShare
     public private(set) var title = ""
     public private(set) var callerUserId: String?
     public private(set) var session: VoiceRoomSession?
@@ -57,6 +59,7 @@ public final class GroupCallModel {
         self.sessionId = sessionId
         self.requestMicrophone = requestMicrophone
         self.now = now
+        camera = CameraShare(makeRoom: makeRoom, rtcUrl: rtcUrl, now: now)
         self.sleep = sleep
     }
 
@@ -372,8 +375,27 @@ public final class GroupCallModel {
         await voice?.disconnect()
     }
 
+    /// Камера в групповом звонке: после публикации участники узнают о ней сигналом `publish_stream`.
+    public func toggleCamera() async {
+        if camera.isActive {
+            await camera.stop()
+            return
+        }
+        guard let callId, let groupChatId, let session else { return }
+        let api = api
+        let me = me
+        let started = await camera.start(token: { try await api.token(userId: me.userId, groupChatId: groupChatId, callId: callId) }) { streamId in
+            CallClientData(userId: me.userId, username: me.username, sessionId: nil, streamType: "SHARE", streamId: streamId, shareType: RemoteShare.Kind.camera.rawValue).encoded()
+        }
+        if started, let streamId = camera.streamId {
+            await session.announceStream(streamId: streamId)
+        }
+    }
+
     private func reset() {
         generation += 1
+        let camera = camera
+        Task { await camera.stop() }
         roomEvents?.cancel()
         callEvents?.cancel()
         roomEvents = nil

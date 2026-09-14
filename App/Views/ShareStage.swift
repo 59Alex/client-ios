@@ -83,3 +83,51 @@ private struct LiveKitVideo: UIViewRepresentable {
         view.layoutMode = fit ? .fit : .fill
     }
 }
+
+/// Своя камера в углу звонка: зеркально, как в видоискателе, с кнопкой смены камеры.
+struct LocalCameraPreview: View {
+    let camera: CameraShare
+
+    var body: some View {
+        if camera.isOn, let track = camera.localTrack as? VideoTrack {
+            LocalVideo(track: track)
+                .frame(width: 110, height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.panel))
+                .overlay(alignment: .bottomTrailing) {
+                    Button { Task { await camera.switchCamera() } } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath.camera")
+                            .font(.subheadline)
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(.black.opacity(0.55), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(4)
+                    .accessibilityLabel("Сменить камеру")
+                    .accessibilityIdentifier("call.camera.switch")
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("call.camera.preview")
+        } else if camera.state == .starting {
+            ProgressView()
+                .frame(width: 110, height: 150)
+                .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.panel))
+        }
+    }
+}
+
+private struct LocalVideo: UIViewRepresentable {
+    let track: VideoTrack
+
+    func makeUIView(context: Context) -> VideoView {
+        let view = VideoView()
+        view.layoutMode = .fill
+        view.mirrorMode = .mirror
+        view.track = track
+        return view
+    }
+
+    func updateUIView(_ view: VideoView, context: Context) {
+        if view.track !== track { view.track = track }
+    }
+}
