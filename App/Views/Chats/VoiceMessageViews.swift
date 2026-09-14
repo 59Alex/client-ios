@@ -3,25 +3,37 @@ import ConnectChat
 import ConnectFiles
 import SwiftUI
 
-/// Кнопка записи голосового (`MessageInput.tsx`): удержание пишет, отпускание отправляет,
-/// свайп вверх больше 72 pt фиксирует запись с паузой, удалением и отправкой.
+/// Режим кнопки записи: голосовое или кружок, переключается коротким нажатием.
+enum RecordMode {
+    case voice, circle
+}
+
+/// Кнопка записи (`MessageInput.tsx`): короткое нажатие переключает голосовое и кружок,
+/// удержание дольше 180 мс пишет, отпускание отправляет; свайп вверх на 72 pt фиксирует голосовое.
 struct VoiceRecordButton: View {
     let recorder: VoiceRecorder
+    let circleRecorder: VideoCircleRecorder
+    @Binding var mode: RecordMode
     @Binding var isLocked: Bool
     let onSend: (Data) -> Void
+    let onSendCircle: (Data) -> Void
 
     @State private var dragOffset: CGFloat = 0
     @State private var isPressing = false
+    @State private var pressStarted: Date?
     @State private var startTask: Task<Void, Never>?
 
     static let lockDistance: CGFloat = 72
+    static let holdDelay: Duration = .milliseconds(180)
+
+    private var isRecording: Bool { recorder.isActive || circleRecorder.isActive }
 
     var body: some View {
-        Image(systemName: recorder.isActive ? "mic.fill" : "mic")
+        Image(systemName: mode == .voice ? (recorder.isActive ? "mic.fill" : "mic") : "video.circle")
             .font(.title3)
             .frame(width: 44, height: 44)
-            .foregroundStyle(recorder.isActive ? Palette.onAccent : Palette.textSecondary)
-            .background(recorder.isActive ? Palette.danger : Palette.canvas, in: Circle())
+            .foregroundStyle(isRecording ? Palette.onAccent : Palette.textSecondary)
+            .background(isRecording ? Palette.danger : Palette.canvas, in: Circle())
             .scaleEffect(isPressing ? 1.15 : 1)
             .overlay(alignment: .top) {
                 if recorder.isActive && !isLocked {
@@ -40,28 +52,44 @@ struct VoiceRecordButton: View {
                     .onChanged { value in
                         if !isPressing {
                             isPressing = true
-                            startTask = Task { _ = await recorder.start() }
+                            pressStarted = Date()
+                            let recordMode = mode
+                            startTask = Task {
+                                try? await Task.sleep(for: Self.holdDelay)
+                                guard !Task.isCancelled, isPressing else { return }
+                                switch recordMode {
+                                case .voice: _ = await recorder.start()
+                                case .circle: _ = await circleRecorder.start()
+                                }
+                            }
                         }
                         dragOffset = value.translation.height
-                        if !isLocked, dragOffset < -Self.lockDistance, recorder.isActive {
+                        if mode == .voice, !isLocked, dragOffset < -Self.lockDistance, recorder.isActive {
                             isLocked = true
                         }
                     }
                     .onEnded { _ in
+                        let heldLongEnough = pressStarted.map { Date().timeIntervalSince($0) >= 0.18 } ?? false
                         isPressing = false
                         dragOffset = 0
+                        pressStarted = nil
+                        guard heldLongEnough else {
+                            startTask?.cancel()
+                            mode = mode == .voice ? .circle : .voice
+                            return
+                        }
                         guard !isLocked else { return }
                         Task {
                             await startTask?.value
-                            if let data = recorder.finish() { onSend(data) }
+                            if recorder.isActive, let data = recorder.finish() { onSend(data) }
+                            if circleRecorder.isActive, let data = await circleRecorder.finish() { onSendCircle(data) }
                         }
                     }
             )
-            .accessibilityLabel(recorder.isActive ? "Идёт запись голосового" : "Записать голосовое сообщение")
-            .accessibilityHint("Удерживайте, чтобы записать; проведите вверх, чтобы зафиксировать запись")
-            .accessibilityAction(named: "Начать запись") {
-                isLocked = true
-                Task { _ = await recorder.start() }
+            .accessibilityLabel(mode == .voice ? "Записать голосовое сообщение" : "Записать кружок")
+            .accessibilityHint("Удерживайте, чтобы записать; короткое нажатие переключает голосовое и кружок")
+            .accessibilityAction(named: "Переключить голосовое и кружок") {
+                mode = mode == .voice ? .circle : .voice
             }
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("chat.voice.record")
@@ -69,7 +97,6 @@ struct VoiceRecordButton: View {
                 if !active { isLocked = false }
             }
     }
-
 }
 
 /// Панель зафиксированной записи: время, уровень, пауза, удаление и отправка.
