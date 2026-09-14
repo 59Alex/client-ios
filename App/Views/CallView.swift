@@ -105,7 +105,8 @@ struct CallView: View {
                     identifier: "call.camera"
                 ) {
                     Task {
-                        if model.camera.isActive || (await CameraPermission.request()) { await model.toggleCamera() }
+                        if !model.camera.isActive { guard await CameraPermission.request() else { return } }
+                        await model.toggleCamera()
                     }
                 }
                 RoundCallButton(

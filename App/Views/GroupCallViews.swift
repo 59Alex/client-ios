@@ -101,7 +101,8 @@ struct GroupCallView: View {
             HStack(spacing: 16) {
                 RoundControl(title: model.camera.isActive ? "Выключить камеру" : "Включить камеру", systemImage: model.camera.isActive ? "video.fill" : "video.slash.fill", fill: model.camera.isActive ? Palette.textPrimary : Palette.surface, foreground: model.camera.isActive ? Palette.canvas : Palette.textPrimary, identifier: "group.call.camera") {
                     Task {
-                        if model.camera.isActive || (await CameraPermission.request()) { await model.toggleCamera() }
+                        if !model.camera.isActive { guard await CameraPermission.request() else { return } }
+                        await model.toggleCamera()
                     }
                 }
                 RoundControl(title: muted ? "Включить микрофон" : "Выключить микрофон", systemImage: muted ? "mic.slash.fill" : "mic.fill", fill: muted ? Palette.textPrimary : Palette.surface, foreground: muted ? Palette.canvas : Palette.textPrimary, identifier: "group.call.mute") {

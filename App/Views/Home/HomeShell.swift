@@ -283,7 +283,8 @@ struct UserPanel: View {
                 if inVoice {
                     ShellIconButton(systemImage: voice.camera.isActive ? "video.fill" : "video", label: voice.camera.isActive ? "Выключить камеру" : "Включить камеру", identifier: "voice.camera", tint: voice.camera.isActive ? Palette.accent : nil) {
                         Task {
-                            if voice.camera.isActive || (await CameraPermission.request()) { await voice.toggleCamera() }
+                            if !voice.camera.isActive { guard await CameraPermission.request() else { return } }
+                        await voice.toggleCamera()
                         }
                     }
                 }
