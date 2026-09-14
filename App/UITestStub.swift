@@ -22,6 +22,15 @@ enum UITestStub {
     static let signedInArgument = "-ui-test-signed-in"
     /// Не стирать последнее место при запуске: проверка восстановления навигации.
     static let keepNavigationArgument = "-ui-test-keep-navigation"
+    /// Медиасервер не отвечает: панель ошибок подключения.
+    static let mediaDownArgument = "-ui-test-media-down"
+    /// Доступ к микрофону запрещён: подсказка с настройками.
+    static let microphoneDeniedArgument = "-ui-test-mic-denied"
+
+    struct MediaProbe: MediaServerProbe {
+        let reachable: Bool
+        func isReachable() async -> Bool { reachable }
+    }
 
     /// Отдельный набор настроек, чтобы тесты не видели навигацию друг друга.
     static func navigationDefaults(arguments: [String]) -> UserDefaults {

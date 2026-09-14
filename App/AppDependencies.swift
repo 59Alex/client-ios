@@ -31,6 +31,7 @@ final class AppDependencies {
     private let settingsClient: HTTPClient
     private let usersClient: HTTPClient
     private let eventStream: any EventStreamTransport
+    private let transport: any HTTPTransport
     private let overrides: Overrides
 
     /// Подмены для офлайн-стаба XCUITest: звонки и чаты без сети и WebRTC.
@@ -52,6 +53,8 @@ final class AppDependencies {
         var presence: (any PresenceAPI)?
         var backgrounds: (any BackgroundsAPI)?
         var navigationDefaults: UserDefaults?
+        var mediaProbe: (any MediaServerProbe)?
+        var microphoneDenied = false
     }
 
     init(
@@ -63,6 +66,7 @@ final class AppDependencies {
     ) {
         self.config = config
         self.eventStream = eventStream
+        self.transport = transport
         self.overrides = overrides
         auth = AuthService(userApiUrl: config.userApiUrl, transport: transport, store: tokenStore)
         mainClient = HTTPClient(baseURL: config.mainApiUrl, transport: transport, tokenProvider: auth)
@@ -85,6 +89,15 @@ final class AppDependencies {
     /// Зависимости экранов вошедшего пользователя; живут, пока он не выйдет.
     func makeSignedIn(user: User) -> SignedInDependencies {
         let status = StatusService(client: statusClient)
+        let connectionErrors = ConnectionErrorsModel(probe: overrides.mediaProbe ?? HTTPMediaServerProbe(rtcUrl: config.rtcWebSocketUrl, transport: transport))
+        let usesStubRooms = overrides.makeCallRoom != nil
+        let micDenied = overrides.microphoneDenied
+        // Каждый запрос микрофона обновляет панель ошибок: отказ показывает подсказку с настройками.
+        let requestMicrophone: @MainActor () async -> Bool = {
+            let granted = micDenied ? false : (usesStubRooms ? true : await MicrophonePermission.request())
+            connectionErrors.microphone(granted: granted)
+            return granted
+        }
         let me = CallParticipant(userId: user.userId, name: user.name, username: user.username)
         let calls = overrides.makeCallModel?(me) ?? P2PCallModel(
             me: me,
@@ -92,7 +105,7 @@ final class AppDependencies {
             rtcUrl: config.rtcWebSocketUrl,
             makeRoom: { LiveKitCallRoom() },
             sessionId: { await status.currentSessionId(userId: user.userId) },
-            requestMicrophone: { await MicrophonePermission.request() }
+            requestMicrophone: requestMicrophone
         )
         let chatAPI = overrides.chatAPI ?? RemoteChatAPI(main: mainClient, notifications: notificationClient, eventStream: eventStream)
         let unread = UnreadModel(api: chatAPI)
@@ -105,7 +118,6 @@ final class AppDependencies {
         let groupCallAPI = overrides.groupCalls ?? RemoteGroupCallAPI(main: mainClient, events: eventsClient, outbox: outboxClient, eventStream: eventStream)
         let roomVoiceAPI = overrides.roomVoice ?? RemoteRoomVoiceAPI(main: mainClient, events: eventsClient, outbox: outboxClient, eventStream: eventStream)
         let callRoom: @MainActor () -> any CallRoom = overrides.makeCallRoom ?? { LiveKitCallRoom() }
-        let usesStubRooms = overrides.makeCallRoom != nil
         let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client, eventStream: eventStream)
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("connect-media", isDirectory: true)
@@ -134,8 +146,9 @@ final class AppDependencies {
             groupCallAPI: groupCallAPI,
             directory: UserDirectory(repository: contactsRepository),
             summaries: CallSummaryPublisher(me: chatUser, api: chatAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: makeSignalRoom),
-            groupCalls: GroupCallModel(me: me, api: groupCallAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: { usesStubRooms ? true : await MicrophonePermission.request() }),
-            roomVoice: RoomVoiceModel(me: me, api: roomVoiceAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: { usesStubRooms ? true : await MicrophonePermission.request() }),
+            groupCalls: GroupCallModel(me: me, api: groupCallAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: requestMicrophone),
+            roomVoice: RoomVoiceModel(me: me, api: roomVoiceAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: requestMicrophone),
+            connectionErrors: connectionErrors,
             makeRoom: { RoomModel(roomId: $0, me: user.userId, api: roomsAPI) },
             makeCalendar: { RoomCalendarModel(roomId: $0, api: roomsAPI) },
             makeFeed: { FeedModel(feedId: $0, me: chatUser, api: roomsAPI) },
@@ -189,7 +202,9 @@ final class AppDependencies {
                     appearanceStore: MemoryAppearanceStore(UITestStub.appearance(arguments: arguments)),
                     presence: FakePresenceAPI(snapshot: [PresenceUpdate(userId: "qa-2", status: .online)]),
                     backgrounds: FakeBackgroundsAPI(),
-                    navigationDefaults: UITestStub.navigationDefaults(arguments: arguments)
+                    navigationDefaults: UITestStub.navigationDefaults(arguments: arguments),
+                    mediaProbe: UITestStub.MediaProbe(reachable: !arguments.contains(UITestStub.mediaDownArgument)),
+                    microphoneDenied: arguments.contains(UITestStub.microphoneDeniedArgument)
                 )
             )
         }
@@ -230,6 +245,7 @@ final class SignedInDependencies {
     let summaries: CallSummaryPublisher
     let groupCalls: GroupCallModel
     let roomVoice: RoomVoiceModel
+    let connectionErrors: ConnectionErrorsModel
     let makeRoom: @MainActor (String) -> RoomModel
     let makeCalendar: @MainActor (String) -> RoomCalendarModel
     let makeFeed: @MainActor (String) -> FeedModel
@@ -263,6 +279,7 @@ final class SignedInDependencies {
         summaries: CallSummaryPublisher,
         groupCalls: GroupCallModel,
         roomVoice: RoomVoiceModel,
+        connectionErrors: ConnectionErrorsModel,
         makeRoom: @escaping @MainActor (String) -> RoomModel,
         makeCalendar: @escaping @MainActor (String) -> RoomCalendarModel,
         makeFeed: @escaping @MainActor (String) -> FeedModel,
@@ -295,6 +312,7 @@ final class SignedInDependencies {
         self.summaries = summaries
         self.groupCalls = groupCalls
         self.roomVoice = roomVoice
+        self.connectionErrors = connectionErrors
         self.makeRoom = makeRoom
         self.makeCalendar = makeCalendar
         self.makeFeed = makeFeed

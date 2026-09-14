@@ -1,5 +1,6 @@
 import ConnectCalls
 import ConnectCore
+import ConnectFeatures
 import ConnectRooms
 import SwiftUI
 
@@ -116,6 +117,8 @@ struct HomeTopBar: View {
     let isRailShown: Bool
     let invitations: Int
     let notifications: Int
+    var errorTone: ConnectionErrorsModel.Tone = .none
+    var onErrors: () -> Void = {}
     let onMenu: () -> Void
     let onInvitations: () -> Void
     let onNotifications: () -> Void
@@ -124,6 +127,15 @@ struct HomeTopBar: View {
         HStack(spacing: 4) {
             ShellIconButton(systemImage: "line.3.horizontal", label: isRailShown ? "Скрыть комнаты" : "Показать комнаты", identifier: "home.menu", action: onMenu)
             Spacer()
+            if errorTone != .none {
+                ShellIconButton(
+                    systemImage: errorTone == .error ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
+                    label: errorTone == .error ? "Ошибки подключения" : "Подключение восстановлено",
+                    identifier: "connection.errors",
+                    tint: errorTone == .error ? Palette.danger : Palette.success,
+                    action: onErrors
+                )
+            }
             ShellIconButton(systemImage: "person.badge.plus", label: invitations > 0 ? "Приглашения: \(invitations)" : "Приглашения", identifier: "inbox.invitations", badge: invitations, action: onInvitations)
             ShellIconButton(systemImage: "bell", label: notifications > 0 ? "Уведомления, новых: \(notifications)" : "Уведомления", identifier: "inbox.open", badge: notifications, action: onNotifications)
         }
