@@ -137,6 +137,7 @@ enum UITestStub {
             contacts: ["qa-1": contacts],
             directory: contacts + [
                 Contact(userId: "qa-4", name: "QA Wallpaper Four", username: "qa_wallpaper_4", status: .online, avatarKey: "user-gallery/qa-4/avatar.png"),
+                Contact(userId: "qa-1", name: "QA Wallpaper", username: "qa_wallpaper_1", status: .online),
             ]
         )
     }

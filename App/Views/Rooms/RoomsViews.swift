@@ -1,6 +1,7 @@
 import ConnectCalls
 import ConnectChat
 import ConnectCore
+import ConnectFeatures
 import ConnectRooms
 import SwiftUI
 
@@ -15,6 +16,7 @@ struct RoomsListView: View {
     let inviteToRoom: @MainActor (_ roomId: String, _ contact: Contact) async -> Bool
     let origin: URL
     let voice: RoomVoiceModel
+    let directory: UserDirectory
     let canJoinVoice: @MainActor () -> Bool
     @Binding var path: [RoomRoute]
 
@@ -42,7 +44,7 @@ struct RoomsListView: View {
                 .navigationDestination(for: RoomRoute.self) { route in
                     switch route {
                     case let .room(id, name):
-                        RoomScreen(model: makeRoom(id), title: name, unread: unread, makeCalendar: makeCalendar, groupTools: groupTools, inviteToRoom: inviteToRoom, origin: origin, voice: voice, canJoinVoice: canJoinVoice)
+                        RoomScreen(model: makeRoom(id), title: name, unread: unread, makeCalendar: makeCalendar, groupTools: groupTools, inviteToRoom: inviteToRoom, origin: origin, voice: voice, directory: directory, canJoinVoice: canJoinVoice)
                     case let .channel(route):
                         RoomChannelContainer(route: route, makeChat: makeChat)
                     }
@@ -125,6 +127,7 @@ private struct RoomScreen: View {
     let inviteToRoom: @MainActor (_ roomId: String, _ contact: Contact) async -> Bool
     let origin: URL
     let voice: RoomVoiceModel
+    let directory: UserDirectory
     let canJoinVoice: @MainActor () -> Bool
 
     @State private var isCalendarShown = false
@@ -235,6 +238,9 @@ private struct RoomScreen: View {
         .task(id: model.voiceChannels.map(\.id)) {
             await voice.watch(channelIds: model.voiceChannels.map(\.id))
         }
+        .task(id: voice.presence.byKey.keys.sorted()) {
+            await directory.load(voice.presence.byKey.values.map(\.userId))
+        }
         .refreshable { await model.load() }
         .sheet(isPresented: $isCalendarShown) {
             RoomCalendarSheet(model: makeCalendar(model.roomId), canCreate: model.canManage)
@@ -255,6 +261,7 @@ private struct RoomScreen: View {
 extension RoomScreen {
     fileprivate func memberName(_ userId: String) -> String {
         if let member = model.details?.members.first(where: { $0.userId == userId }) { return member.displayName }
+        if let known = directory.name(of: userId) { return known }
         if let voiceName = voice.session?.participants.first(where: { $0.userId == userId })?.username { return voiceName }
         return "Пользователь"
     }

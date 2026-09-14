@@ -1,3 +1,4 @@
+import ConnectCalls
 import ConnectChat
 import ConnectFiles
 import ConnectSettings
@@ -13,6 +14,7 @@ struct ChatScreen: View {
     var groupTools: GroupTools?
 
     @State private var isMembersShown = false
+    @State private var activeCall: GroupCallRecord?
 
     @State private var confirmDelete: ChatMessage?
     @State private var photoItems: [PhotosPickerItem] = []
@@ -24,6 +26,11 @@ struct ChatScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let activeCall, let joinCall = groupTools?.joinCall {
+                ActiveCallBanner(record: activeCall, canJoin: groupTools?.canCall() ?? false) {
+                    Task { await joinCall(activeCall, model.title) }
+                }
+            }
             switch model.state {
             case .loading:
                 ProgressView()
@@ -95,6 +102,13 @@ struct ChatScreen: View {
         }
         .task { await model.load() }
         .task { await model.runRealtime() }
+        .task(id: model.kind) {
+            guard let lookup = groupTools?.activeCall else { return }
+            while !Task.isCancelled {
+                activeCall = await lookup(model.roomId)
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
         .photosPicker(isPresented: $isPhotoPickerShown, selection: $photoItems, maxSelectionCount: 10, matching: .any(of: [.images, .videos]))
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
@@ -343,6 +357,47 @@ private struct GreetingPrompt: View {
         }
         let mime = UTType(filenameExtension: String(ext.dropFirst()))?.preferredMIMEType ?? "image/png"
         failed = !(await model.sendGreeting(data: data, filename: "Приветствие\(ext)", mimeType: mime))
+    }
+}
+
+/// Баннер идущего группового звонка (`ActiveGroupCallJoinButton.tsx`).
+private struct ActiveCallBanner: View {
+    let record: GroupCallRecord
+    let canJoin: Bool
+    let onJoin: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "phone.fill").foregroundStyle(Palette.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Текущий звонок").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.textPrimary)
+                if let startedAt = record.startedAt {
+                    TimelineView(.periodic(from: startedAt, by: 1)) { context in
+                        Text("\(CallView.duration(from: startedAt, to: context.date)), \(Self.participants(record.participantUserIds.count))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(Palette.textSecondary)
+                    }
+                } else {
+                    Text(Self.participants(record.participantUserIds.count)).font(.caption).foregroundStyle(Palette.textSecondary)
+                }
+            }
+            Spacer()
+            Button("Присоединиться", action: onJoin)
+                .buttonStyle(.borderedProminent)
+                .disabled(!canJoin)
+                .accessibilityIdentifier("chat.joinCall")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Palette.surface)
+        .overlay(alignment: .bottom) { Rectangle().fill(Palette.border).frame(height: 0.5) }
+        .accessibilityElement(children: .contain)
+    }
+
+    static func participants(_ count: Int) -> String {
+        let mod10 = count % 10, mod100 = count % 100
+        let word = mod10 == 1 && mod100 != 11 ? "участник" : ((2...4).contains(mod10) && !(12...14).contains(mod100) ? "участника" : "участников")
+        return "\(count) \(word)"
     }
 }
 

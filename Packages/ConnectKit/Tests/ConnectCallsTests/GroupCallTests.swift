@@ -210,3 +210,52 @@ struct GroupCallTests {
 final class GroupRoomBox {
     var rooms: [FakeCallRoom] = []
 }
+
+@MainActor
+@Suite("Итоги звонков")
+struct CallSummaryTests {
+    @Test("ответ выхода из группового звонка: число, флаг или объект")
+    func lastParticipant() {
+        #expect(RemoteGroupCallAPI.wasLastParticipant(Data("0".utf8)))
+        #expect(!RemoteGroupCallAPI.wasLastParticipant(Data("2".utf8)))
+        #expect(RemoteGroupCallAPI.wasLastParticipant(Data("true".utf8)))
+        #expect(RemoteGroupCallAPI.wasLastParticipant(Data(#"{"remainingParticipants":0}"#.utf8)))
+        #expect(!RemoteGroupCallAPI.wasLastParticipant(Data(#"{"lastParticipant":false}"#.utf8)))
+        #expect(!RemoteGroupCallAPI.wasLastParticipant(Data()))
+    }
+
+    @Test("последний участник группового звонка сообщает итог")
+    func groupSummary() async {
+        let api = FakeGroupCallAPI()
+        await api.setLastOnLeave(true)
+        let clock = TestClock(Date(timeIntervalSince1970: 1_000))
+        let model = GroupCallModel(me: CallParticipant(userId: "me", name: "Я", username: "@me"), api: api, rtcUrl: URL(string: "wss://x")!, makeRoom: { FakeCallRoom() }, sessionId: { nil }, requestMicrophone: { true }, now: { clock.now }, sleep: { _ in await Task.yield() })
+        var reports: [CallSummaryReport] = []
+        model.onCallSummary = { reports.append($0) }
+        await model.start(groupChatId: "chat", name: "G", memberUserIds: ["u2"])
+        // Кто-то вошёл: хост не удаляет звонок, а выходит.
+        for _ in 0..<200 where !(await api.hasCallSubscriber("group-call-1")) { await Task.yield() }
+        await api.pushCallEvent(GroupCallEvent(kind: .join, groupCallId: "group-call-1", participantUserId: "u2"))
+        for _ in 0..<40 { await Task.yield() }
+        clock.now = clock.now.addingTimeInterval(95)
+        await model.hangUp()
+        #expect(reports.count == 1)
+        #expect(reports.first?.isGroup == true)
+        #expect(reports.first?.roomId == "chat")
+        #expect(reports.first?.durationSeconds == 95)
+    }
+}
+
+final class TestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Date
+
+    init(_ value: Date) {
+        self.value = value
+    }
+
+    var now: Date {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
+    }
+}

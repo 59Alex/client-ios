@@ -38,6 +38,21 @@ final class GroupCallFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testActiveCallBannerJoin() throws {
+        let app = launch()
+        app.tabBars.buttons["Группы"].tap()
+        app.buttons["chats.row.group-1"].tap()
+
+        let join = app.buttons["chat.joinCall"]
+        XCTAssertTrue(join.waitForExistence(timeout: 10))
+        attachScreenshot("73-active-call-banner")
+        join.tap()
+        XCTAssertTrue(app.buttons["group.call.hangup"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'QA Wallpaper Two'")).firstMatch.waitForExistence(timeout: 10))
+        app.buttons["group.call.hangup"].tap()
+    }
+
+    @MainActor
     func testIncomingGroupCall() throws {
         let app = launch(["-ui-test-incoming-group-call"])
         let accept = app.buttons["group.call.accept"]
@@ -58,6 +73,7 @@ final class GroupCallFlowUITests: XCTestCase {
         let voice = app.buttons["room.voice.channel-voice"]
         XCTAssertTrue(voice.waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["room.voice.participant.qa-2"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'QA Wallpaper Two'")).firstMatch.waitForExistence(timeout: 10))
         voice.tap()
 
         XCTAssertTrue(app.buttons["voice.leave"].waitForExistence(timeout: 10))

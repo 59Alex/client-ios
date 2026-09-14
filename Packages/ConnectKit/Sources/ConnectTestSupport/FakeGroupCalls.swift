@@ -41,7 +41,13 @@ public actor FakeGroupCallAPI: GroupCallAPI {
         joined.append(callId)
     }
 
-    public func leave(callId: String, userId: String, sessionId: String?) async throws { left.append(callId) }
+    public var lastOnLeave = false
+    public func setLastOnLeave(_ value: Bool) { lastOnLeave = value }
+
+    public func leave(callId: String, userId: String, sessionId: String?) async throws -> Bool {
+        left.append(callId)
+        return lastOnLeave
+    }
     public func deleteCall(callId: String, sessionId: String?) async throws { deleted.append(callId) }
     public func decline(callId: String, userId: String, sessionId: String?) async throws { declined.append(callId) }
     public func call(id: String) async throws -> GroupCallRecord? { records[id] }

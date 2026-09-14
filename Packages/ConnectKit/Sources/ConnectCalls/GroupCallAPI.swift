@@ -129,7 +129,9 @@ public struct GroupCallRecord: Sendable, Equatable {
 public protocol GroupCallAPI: Sendable {
     func createCall(callerUserId: String, groupChatId: String, name: String, calleeUserIds: [String], sessionId: String?) async throws -> String
     func join(callId: String, userId: String, sessionId: String?) async throws
-    func leave(callId: String, userId: String, sessionId: String?) async throws
+    /// Возвращает `true`, если ушёл последний участник и звонок завершится.
+    @discardableResult
+    func leave(callId: String, userId: String, sessionId: String?) async throws -> Bool
     func deleteCall(callId: String, sessionId: String?) async throws
     func decline(callId: String, userId: String, sessionId: String?) async throws
     func call(id: String) async throws -> GroupCallRecord?
@@ -177,9 +179,28 @@ public struct RemoteGroupCallAPI: GroupCallAPI {
         try HTTPClient.requireSuccess(response)
     }
 
-    public func leave(callId: String, userId: String, sessionId: String?) async throws {
+    @discardableResult
+    public func leave(callId: String, userId: String, sessionId: String?) async throws -> Bool {
         let body = ParticipantCommand(groupCallId: callId, participantUserId: userId, sessionId: sessionId)
-        try HTTPClient.requireSuccess(try await events.post("/api/groupcall/disconnect/participant", json: body, headers: ["X-Idempotence-Id": body.idempotenceId]))
+        let response = try await events.post("/api/groupcall/disconnect/participant", json: body, headers: ["X-Idempotence-Id": body.idempotenceId])
+        try HTTPClient.requireSuccess(response)
+        return Self.wasLastParticipant(response.body)
+    }
+
+    /// Ответ бывает числом оставшихся, флагом или объектом (`group_call_api.ts`).
+    static func wasLastParticipant(_ body: Data) -> Bool {
+        let raw = String(decoding: body, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw == "true" { return true }
+        if raw == "false" || raw.isEmpty { return false }
+        if let number = Int(raw) { return number <= 0 }
+        guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else { return false }
+        for key in ["lastParticipant", "wasLastParticipant"] {
+            if let flag = object[key] as? Bool { return flag }
+        }
+        for key in ["remainingParticipantCount", "remainingParticipants", "participantCount", "participantsCount"] {
+            if let number = object[key] as? NSNumber { return number.intValue <= 0 }
+        }
+        return false
     }
 
     public func deleteCall(callId: String, sessionId: String?) async throws {

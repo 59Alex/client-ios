@@ -11,13 +11,16 @@ public struct OutgoingMessage: Sendable, Equatable {
     public var message: String
     public var dateTimeCreateTimestamp: Int64
     public var attachedFiles: [ChatAttachment]
+    /// Итог звонка: сервис не считает такое сообщение превью для непрочитанного.
+    public var callInfo: Bool
 
-    public init(userId: String, roomId: String, message: String, dateTimeCreateTimestamp: Int64, attachedFiles: [ChatAttachment] = []) {
+    public init(userId: String, roomId: String, message: String, dateTimeCreateTimestamp: Int64, attachedFiles: [ChatAttachment] = [], callInfo: Bool = false) {
         self.userId = userId
         self.roomId = roomId
         self.message = message
         self.dateTimeCreateTimestamp = dateTimeCreateTimestamp
         self.attachedFiles = attachedFiles
+        self.callInfo = callInfo
     }
 }
 
@@ -193,7 +196,7 @@ struct OutgoingMessageBody: Encodable, Sendable {
     let kind: ChatKind
 
     enum CodingKeys: String, CodingKey {
-        case userId, roomId, channelId, message, dateTimeCreateTimestamp, attachedFiles
+        case userId, roomId, channelId, message, dateTimeCreateTimestamp, attachedFiles, callInfo
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -203,6 +206,9 @@ struct OutgoingMessageBody: Encodable, Sendable {
         try container.encode(message.message, forKey: .message)
         try container.encode(message.dateTimeCreateTimestamp, forKey: .dateTimeCreateTimestamp)
         try container.encode(message.attachedFiles, forKey: .attachedFiles)
+        if message.callInfo {
+            try container.encode(true, forKey: .callInfo)
+        }
     }
 }
 
