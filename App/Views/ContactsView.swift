@@ -7,12 +7,17 @@ struct ContactsView: View {
     let model: ContactsModel
     let calls: P2PCallModel
     let myUsername: String
+    var myUserId = ""
+    var repository: (any ContactsRepository)?
+    var onChatsCreated: () -> Void = {}
     let onOpenChat: (ChatRoute) -> Void
 
     /// Ключ веб-клиента для выбранного порядка.
     static let sortKey = "connect.contacts.sort.v1"
 
     @State private var profileContact: Contact?
+    @State private var isSyncing = false
+    @State private var syncMessage: String?
     @State private var actionError: String?
 
     var body: some View {
@@ -40,6 +45,16 @@ struct ContactsView: View {
                         }
                         .accessibilityIdentifier("contacts.sort")
                     }
+                    if repository != nil {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { Task { await syncPhoneBook() } } label: {
+                                if isSyncing { ProgressView() } else { Image(systemName: "person.crop.circle.badge.questionmark") }
+                            }
+                            .disabled(isSyncing)
+                            .accessibilityLabel("Найти знакомых из телефонной книги")
+                            .accessibilityIdentifier("contacts.syncPhoneBook")
+                        }
+                    }
                 }
         }
         .task {
@@ -51,6 +66,11 @@ struct ContactsView: View {
         }
         .sheet(item: $profileContact) { contact in
             ContactProfileSheet(contact: contact, model: model)
+        }
+        .alert("Телефонная книга", isPresented: .init(get: { syncMessage != nil }, set: { if !$0 { syncMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(syncMessage ?? "")
         }
         .alert("Не получилось", isPresented: .init(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -150,6 +170,23 @@ struct ContactsView: View {
             Task {
                 if !(await model.remove(contact)) { actionError = "Не удалось удалить контакт" }
             }
+        }
+    }
+
+    private func syncPhoneBook() async {
+        guard let repository else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        do {
+            let numbers = try await PhoneBook.numbers()
+            let result = await PhoneBookSync.run(numbers: numbers, me: myUserId, repository: repository)
+            SyncGreetings.remember(result.createdRoomIds, userId: myUserId)
+            if result.created > 0 { onChatsCreated() }
+            syncMessage = result.message
+        } catch PhoneBook.Failure.denied {
+            syncMessage = "Разрешите Connect доступ к контактам в настройках iPhone, чтобы найти знакомых."
+        } catch {
+            syncMessage = "Не удалось прочитать контакты телефона"
         }
     }
 

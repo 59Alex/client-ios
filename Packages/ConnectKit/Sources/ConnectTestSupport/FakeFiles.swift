@@ -99,6 +99,26 @@ public actor FakeFileAPI: FileAPI {
 
 /// Контакты в памяти для тестов и офлайн-стаба.
 public actor FakeContactsRepository: ContactsRepository {
+    public private(set) var createdChats: [String] = []
+    /// Владельцы номеров для поиска по телефону (номер в виде `+7 (999) 123-45-67`).
+    public var phoneBook: [String: Contact] = [:]
+    public var failingPhones: Set<String> = []
+    public func setPhoneBook(_ book: [String: Contact], failing: Set<String> = []) {
+        phoneBook = book
+        failingPhones = failing
+    }
+    public var existingChatPeers: Set<String> = []
+    public func setExistingChatPeers(_ peers: Set<String>) { existingChatPeers = peers }
+
+    public func existingChat(userId: String, peerUserId: String) async throws -> String? {
+        existingChatPeers.contains(peerUserId) ? "room-\(peerUserId)" : nil
+    }
+
+    public func createChat(userId: String, peerUserId: String) async throws -> String {
+        createdChats.append(peerUserId)
+        return "room-new-\(peerUserId)"
+    }
+
     public private(set) var contactsByUser: [String: [Contact]]
     public private(set) var directory: [Contact]
     public private(set) var blocked: Set<String> = []
@@ -118,8 +138,9 @@ public actor FakeContactsRepository: ContactsRepository {
         case let .login(login):
             let normalized = login.drop { $0 == "@" }.lowercased()
             return directory.first { $0.username.drop { $0 == "@" }.lowercased() == normalized }
-        case .phone:
-            return nil
+        case let .phone(phone):
+            if failingPhones.contains(phone) { throw URLError(.timedOut) }
+            return phoneBook[phone]
         }
     }
 
