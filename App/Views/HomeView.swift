@@ -126,8 +126,25 @@ struct HomeView: View {
                     }
                 }
                 .sheet(isPresented: $isJoinRoomShown) {
-                    TextPromptSheet(title: "Войти по приглашению", placeholder: "Ссылка-приглашение", actionTitle: "Войти", identifier: "rooms.join") { link in
-                        await dependencies.rooms.join(link: link)
+                    TextPromptSheet(title: "Войти по приглашению", placeholder: "Ссылка на комнату или встречу", actionTitle: "Войти", identifier: "rooms.join") { link in
+                        // Ссылка встречи добавляет в группу звонка (`MeetingEntry.tsx`), остальные — приглашение в комнату.
+                        guard let code = MeetingLinks.code(from: link) else {
+                            return await dependencies.rooms.join(link: link)
+                        }
+                        do {
+                            let accepted = try await dependencies.meetings.accept(code: code)
+                            await dependencies.groupChats.load()
+                            var title = "Группа"
+                            if case let .loaded(chats) = dependencies.groupChats.state, let chat = chats.first(where: { $0.roomId == accepted.groupId }) {
+                                title = chat.title
+                            }
+                            navigation.open(ChatRoute(kind: .group, roomId: accepted.groupId, title: title))
+                            return nil
+                        } catch let error as MeetingError {
+                            return error.message
+                        } catch {
+                            return MeetingError.other.message
+                        }
                     }
                 }
                 .confirmationDialog("Комнаты", isPresented: $isRoomActionsShown) {
@@ -155,7 +172,7 @@ struct HomeView: View {
                     }
                     .zIndex(1)
                 } else {
-                    GroupCallView(model: dependencies.groupCalls, names: callNames, onMinimize: { isCallMinimized = true })
+                    GroupCallView(model: dependencies.groupCalls, names: callNames, onMinimize: { isCallMinimized = true }, meetings: dependencies.meetings, origin: dependencies.uiOrigin)
                         .transition(.opacity)
                         .zIndex(1)
                 }

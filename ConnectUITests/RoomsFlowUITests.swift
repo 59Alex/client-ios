@@ -121,6 +121,25 @@ final class RoomsFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testMeetingLinkOpensGroup() throws {
+        let app = launchSignedIn()
+        let add = app.buttons["rail.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        app.buttons["Войти по приглашению"].tap()
+
+        let field = app.textFields["rooms.join.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("https://cnnect.ru/share/meet/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde")
+        app.buttons["rooms.join.submit"].tap()
+
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["chat.members"].exists)
+        attachScreenshot("57-meeting-group")
+    }
+
+    @MainActor
     private func attachScreenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name

@@ -53,6 +53,7 @@ final class AppDependencies {
         var presence: (any PresenceAPI)?
         var backgrounds: (any BackgroundsAPI)?
         var navigationDefaults: UserDefaults?
+        var meetings: (any MeetingsAPI)?
         var mediaProbe: (any MediaServerProbe)?
         var microphoneDenied = false
     }
@@ -142,6 +143,7 @@ final class AppDependencies {
             uiOrigin: config.uiOrigin,
             settings: settingsAPI,
             appearance: appearance,
+            meetings: overrides.meetings ?? RemoteMeetingsAPI(main: mainClient),
             navigationStore: NavigationStore(defaults: overrides.navigationDefaults ?? .standard),
             deviceId: Self.deviceId(),
             groupCallAPI: groupCallAPI,
@@ -204,6 +206,7 @@ final class AppDependencies {
                     presence: FakePresenceAPI(snapshot: [PresenceUpdate(userId: "qa-2", status: .online)]),
                     backgrounds: FakeBackgroundsAPI(),
                     navigationDefaults: UITestStub.navigationDefaults(arguments: arguments),
+                    meetings: FakeMeetingsAPI(acceptGroupId: "group-1"),
                     mediaProbe: UITestStub.MediaProbe(reachable: !arguments.contains(UITestStub.mediaDownArgument)),
                     microphoneDenied: arguments.contains(UITestStub.microphoneDeniedArgument)
                 )
@@ -240,6 +243,7 @@ final class SignedInDependencies {
     let uiOrigin: URL
     let settings: any SettingsAPI
     let appearance: AppearanceModel
+    let meetings: any MeetingsAPI
     let navigationStore: NavigationStore
     let deviceId: String
     let groupCallAPI: any GroupCallAPI
@@ -275,6 +279,7 @@ final class SignedInDependencies {
         uiOrigin: URL,
         settings: any SettingsAPI,
         appearance: AppearanceModel,
+        meetings: any MeetingsAPI,
         navigationStore: NavigationStore,
         deviceId: String,
         groupCallAPI: any GroupCallAPI,
@@ -309,6 +314,7 @@ final class SignedInDependencies {
         self.uiOrigin = uiOrigin
         self.settings = settings
         self.appearance = appearance
+        self.meetings = meetings
         self.navigationStore = navigationStore
         self.deviceId = deviceId
         self.groupCallAPI = groupCallAPI

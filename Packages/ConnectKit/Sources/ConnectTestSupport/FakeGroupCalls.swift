@@ -140,3 +140,28 @@ public actor FakeRoomVoiceAPI: RoomVoiceAPI {
         continuations.append(continuation)
     }
 }
+
+/// Встречи в памяти: код ссылки и группа, в которую ведёт принятие.
+public actor FakeMeetingsAPI: MeetingsAPI {
+    public private(set) var invitations: [(groupId: String, callId: String)] = []
+    public var acceptGroupId: String?
+    public var failure: MeetingError?
+
+    public init(acceptGroupId: String? = nil) {
+        self.acceptGroupId = acceptGroupId
+    }
+
+    public func setFailure(_ error: MeetingError?) { failure = error }
+
+    public func createInvitation(groupId: String, callId: String) async throws -> MeetingInvitation {
+        if let failure { throw failure }
+        invitations.append((groupId, callId))
+        return MeetingInvitation(code: String(repeating: "a", count: 43), expiresAt: nil)
+    }
+
+    public func accept(code: String) async throws -> MeetingAcceptance {
+        if let failure { throw failure }
+        guard let acceptGroupId else { throw MeetingError.expired }
+        return MeetingAcceptance(groupId: acceptGroupId, callId: nil, active: false)
+    }
+}
