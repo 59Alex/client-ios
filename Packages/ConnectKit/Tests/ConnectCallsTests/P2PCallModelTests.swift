@@ -135,6 +135,28 @@ struct P2PCallModelTests {
         #expect(share.state == .failed("Не удалось включить камеру"))
     }
 
+    @Test("«Позвонить снова» после отказа микрофона повторяет вызов тому же собеседнику")
+    func callAgain() async throws {
+        var allowed = false
+        let box = RoomBox()
+        let now = fixedNow
+        let model = P2PCallModel(me: me, api: api, rtcUrl: URL(string: "wss://rtc.cnnect.ru/livekit")!, makeRoom: {
+            let room = FakeCallRoom()
+            box.rooms.append(room)
+            return room
+        }, sessionId: { "session-1" }, requestMicrophone: { allowed }, now: { now }, sleep: { _ in await Task.yield() })
+
+        await model.call(peer)
+        #expect(model.canCallAgain)
+        #expect(await api.createdCalls.isEmpty)
+
+        allowed = true
+        await model.callAgain()
+        #expect(model.phase == .ringing)
+        #expect(await api.createdCalls.map(\.callee) == ["peer"])
+        #expect(!model.canCallAgain)
+    }
+
     @Test("собеседник снял аудиопоток — звонок завершается и удаляется")
     func remoteHangUp() async throws {
         let (model, box) = makeModel()

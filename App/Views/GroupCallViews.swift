@@ -131,9 +131,19 @@ struct GroupCallView: View {
                 }
             }
         case .failed:
-            Button("Закрыть") { Task { await model.hangUp() } }
-                .buttonStyle(PrimaryButtonStyle())
-                .accessibilityIdentifier("group.call.close")
+            VStack(spacing: 12) {
+                if model.canCallAgain {
+                    Button { Task { await model.callAgain() } } label: {
+                        Label("Позвонить снова", systemImage: "phone.fill")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("group.call.again")
+                }
+                Button("Закрыть") { Task { await model.hangUp() } }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("group.call.close")
+            }
         default:
             let muted = model.session?.isMuted ?? false
             let speakerOff = model.session?.isSpeakerOff ?? false

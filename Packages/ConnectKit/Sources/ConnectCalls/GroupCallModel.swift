@@ -95,7 +95,24 @@ public final class GroupCallModel {
     // MARK: - Исходящий
 
     /// Звонок в группу: вызываются все участники, кроме себя; пустой список — «комната», где хост один.
+    /// Участники последнего исходящего вызова: по ним «Позвонить снова» повторяет звонок в группу.
+    private var lastMemberUserIds: [String] = []
+
+    public var canCallAgain: Bool {
+        if case .failed = phase { return groupChatId != nil && !lastMemberUserIds.isEmpty }
+        return false
+    }
+
+    public func callAgain() async {
+        guard canCallAgain, let groupChatId else { return }
+        let members = lastMemberUserIds
+        let name = title
+        await hangUp()
+        await start(groupChatId: groupChatId, name: name, memberUserIds: members)
+    }
+
     public func start(groupChatId: String, name: String, memberUserIds: [String]) async {
+        lastMemberUserIds = memberUserIds
         guard phase == .idle || isFailed else { return }
         let generation = begin(chatId: groupChatId, title: name)
         callerUserId = me.userId
@@ -191,6 +208,7 @@ public final class GroupCallModel {
 
     /// Вход в уже идущий звонок группы (баннер в чате).
     public func join(callId: String, groupChatId: String, title: String) async {
+        lastMemberUserIds = []
         guard phase == .idle || phase == .incoming || isFailed else { return }
         let generation = phase == .incoming ? self.generation : begin(chatId: groupChatId, title: title)
         self.callId = callId

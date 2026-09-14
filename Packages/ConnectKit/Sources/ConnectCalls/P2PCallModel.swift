@@ -145,6 +145,14 @@ public final class P2PCallModel {
 
     // MARK: - Исходящий
 
+    /// Звонок не состоялся — можно позвонить тому же собеседнику ещё раз («Позвонить снова» веба).
+    public var canCallAgain: Bool { isFailed && peer != nil }
+
+    public func callAgain() async {
+        guard canCallAgain, let peer else { return }
+        await call(Contact(userId: peer.userId, name: peer.name, username: peer.username))
+    }
+
     public func call(_ contact: Contact) async {
         guard phase == .idle || isFailed else { return }
         let peer = CallParticipant(contact)
