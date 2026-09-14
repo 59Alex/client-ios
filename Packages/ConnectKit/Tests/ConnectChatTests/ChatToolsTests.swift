@@ -1,4 +1,5 @@
 import ConnectCalls
+import ConnectFiles
 import ConnectNetworking
 import ConnectChat
 import ConnectTestSupport
@@ -97,5 +98,48 @@ struct ChatToolsTests {
 private struct StubEventStream: EventStreamTransport {
     func events(for request: URLRequest) -> AsyncThrowingStream<ServerSentEvent, any Error> {
         AsyncThrowingStream { $0.finish() }
+    }
+}
+
+@MainActor
+@Suite("Прогресс загрузки вложений")
+struct UploadProgressTests {
+    @Test("проценты по fileId, не больше 99% до ответа, не откатываются, после загрузки 100%")
+    func progress() async throws {
+        let files = FakeFileAPI()
+        await files.setHoldUploads(true)
+        let chat = ChatModel(kind: .p2p, roomId: "room", title: "Иван", me: ChatUser(userId: "me", username: "me"), api: FakeChatAPI(messages: ["room": []]), unread: nil, rtcUrl: URL(string: "wss://x")!, makeRoom: { FakeCallRoom() }, files: files)
+
+        let upload = Task { await chat.attach(data: Data("pdf".utf8), filename: "a.pdf", mimeType: "application/pdf") }
+        for _ in 0..<200 {
+            let subscribed = await files.hasProgressSubscriber()
+            let started = await !files.uploadFileIds.isEmpty
+            if subscribed && started { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        let pending = try #require(chat.pendingAttachments.first)
+        #expect(await files.uploadFileIds == [pending.fileId])
+        #expect(pending.progress == nil)
+
+        await files.pushProgress(UploadProgress(fileId: "other", progressPercent: 50))
+        await files.pushProgress(UploadProgress(fileId: pending.fileId, progressPercent: 40))
+        for _ in 0..<200 where chat.pendingAttachments.first?.progress == nil { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(chat.pendingAttachments.first?.progress == 0.4)
+
+        chat.applyProgress(UploadProgress(fileId: pending.fileId, progressPercent: 30))
+        #expect(chat.pendingAttachments.first?.progress == 0.4)
+        chat.applyProgress(UploadProgress(fileId: pending.fileId, progressPercent: 100))
+        #expect(chat.pendingAttachments.first?.progress == 0.99)
+
+        await files.finishUpload(pending.fileId)
+        await upload.value
+        #expect(chat.pendingAttachments.first?.progress == 1)
+        #expect(chat.canSend)
+    }
+
+    @Test("кадр прогресса разбирается, мусор отбрасывается")
+    func remoteStream() async throws {
+        #expect(UploadProgress.decode(#"{"userId":"me","fileId":"f1","progressPercent":12.5,"processingStatus":"UPLOADING"}"#) == UploadProgress(fileId: "f1", progressPercent: 12.5, processingStatus: "UPLOADING"))
+        #expect(UploadProgress.decode("oops") == nil)
     }
 }
