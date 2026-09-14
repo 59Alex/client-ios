@@ -80,6 +80,8 @@ public final class P2PCallModel {
     private var declinedUntil: [String: Date] = [:]
     private var acceptedAt: Date?
     private var trackKey = UUID().uuidString.lowercased()
+    /// Занят ли пользователь другим звонком или голосовым каналом (правило одного активного звонка).
+    public var isBusyElsewhere: @MainActor () -> Bool = { false }
 
     public init(
         me: CallParticipant,
@@ -408,7 +410,7 @@ public final class P2PCallModel {
         guard let callId else { return }
         if self.callId == callId { return }
 
-        guard phase == .idle || isFailed else {
+        guard (phase == .idle || isFailed), !isBusyElsewhere() else {
             // Уже разговариваем — отклоняем, как веб-клиент в групповом звонке.
             let session = await sessionId()
             try? await api.deleteCall(callerUserId: callerUserId, calleeUserId: me.userId, callId: callId, sessionId: session)

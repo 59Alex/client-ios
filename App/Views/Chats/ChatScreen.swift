@@ -64,6 +64,18 @@ struct ChatScreen: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+            if let startCall = groupTools?.startCall {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task { await startCall(model.roomId, model.title, model.members.map(\.userId)) }
+                    } label: {
+                        Image(systemName: "phone")
+                    }
+                    .disabled(!(groupTools?.canCall() ?? false))
+                    .accessibilityLabel("Позвонить в группу")
+                    .accessibilityIdentifier("chat.groupCall")
+                }
+            }
             if groupTools != nil {
                 ToolbarItem(placement: .primaryAction) {
                     Button { isMembersShown = true } label: {

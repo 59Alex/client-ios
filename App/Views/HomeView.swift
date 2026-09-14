@@ -27,6 +27,9 @@ struct HomeView: View {
     private var groupTools: GroupTools {
         let contacts = dependencies.contacts
         let inbox = dependencies.inbox
+        let groupCalls = dependencies.groupCalls
+        let calls = calls
+        let voice = dependencies.roomVoice
         return GroupTools(
             contacts: {
                 if case let .loaded(list) = contacts.state { return list }
@@ -34,8 +37,25 @@ struct HomeView: View {
             },
             invite: { groupId, contact in
                 (try? await inbox.invite(kind: .group, targetId: groupId, recipientUserId: contact.userId)) != nil
-            }
+            },
+            startCall: { groupId, title, members in
+                if let active = try? await dependencies.groupCallAPI.activeCall(groupChatId: groupId) {
+                    await groupCalls.join(callId: active.id, groupChatId: groupId, title: title)
+                } else {
+                    await groupCalls.start(groupChatId: groupId, name: title, memberUserIds: members)
+                }
+            },
+            canCall: { !calls.isInCall && !groupCalls.isInCall && !voice.isInCall }
         )
+    }
+
+    /// Имена для плиток группового звонка: контакты и участники открытой группы.
+    private var callNames: [String: String] {
+        var names: [String: String] = [:]
+        if case let .loaded(list) = dependencies.contacts.state {
+            for contact in list { names[contact.userId] = contact.displayName }
+        }
+        return names
     }
 
     var body: some View {
@@ -60,6 +80,8 @@ struct HomeView: View {
                         (try? await dependencies.inbox.invite(kind: .room, targetId: roomId, recipientUserId: contact.userId)) != nil
                     },
                     origin: dependencies.uiOrigin,
+                    voice: dependencies.roomVoice,
+                    canJoinVoice: { !calls.isInCall && !dependencies.groupCalls.isInCall },
                     path: $navigation.roomsPath
                 )
                     .tabItem { Label("Комнаты", systemImage: "square.grid.2x2") }
@@ -105,16 +127,38 @@ struct HomeView: View {
             }
             .accessibilityHidden(calls.isInCall)
 
+            if dependencies.roomVoice.isInCall, !calls.isInCall, !dependencies.groupCalls.isInCall {
+                VStack {
+                    Spacer()
+                    VoiceChannelBar(model: dependencies.roomVoice)
+                        .padding(.bottom, 58)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             // Слой, а не fullScreenCover: состояние звонка целиком в модели, закрывать экран жестом нельзя.
             if calls.isInCall {
                 CallView(model: calls)
                     .transition(.opacity)
                     .zIndex(1)
+            } else if dependencies.groupCalls.isInCall {
+                GroupCallView(model: dependencies.groupCalls, names: callNames)
+                    .transition(.opacity)
+                    .zIndex(1)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: calls.isInCall)
+        .animation(.easeInOut(duration: 0.2), value: dependencies.groupCalls.isInCall)
+        .onAppear {
+            let groupCalls = dependencies.groupCalls
+            let voice = dependencies.roomVoice
+            let calls = calls
+            calls.isBusyElsewhere = { groupCalls.isInCall || voice.isInCall }
+            groupCalls.isBusyElsewhere = { calls.isInCall || voice.isInCall }
+        }
         .task { await dependencies.status.keepAlive(userId: dependencies.user.userId) }
         .task { await calls.runIncomingCalls() }
+        .task { await dependencies.groupCalls.runIncomingCalls() }
         .task { await dependencies.unread.run() }
         .task { await dependencies.invitations.load() }
         .task { await dependencies.contacts.load() }
@@ -131,6 +175,8 @@ struct HomeView: View {
     private func logout() async {
         isProfileShown = false
         await calls.hangUp()
+        await dependencies.groupCalls.hangUp()
+        await dependencies.roomVoice.leave()
         await dependencies.status.logout(userId: dependencies.user.userId)
         await session.logout()
     }

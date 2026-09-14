@@ -1,3 +1,4 @@
+import ConnectCalls
 import ConnectChat
 import ConnectCore
 import ConnectRooms
@@ -13,6 +14,8 @@ struct RoomsListView: View {
     let groupTools: GroupTools
     let inviteToRoom: @MainActor (_ roomId: String, _ contact: Contact) async -> Bool
     let origin: URL
+    let voice: RoomVoiceModel
+    let canJoinVoice: @MainActor () -> Bool
     @Binding var path: [RoomRoute]
 
     @State private var isCreateShown = false
@@ -39,7 +42,7 @@ struct RoomsListView: View {
                 .navigationDestination(for: RoomRoute.self) { route in
                     switch route {
                     case let .room(id, name):
-                        RoomScreen(model: makeRoom(id), title: name, unread: unread, makeCalendar: makeCalendar, groupTools: groupTools, inviteToRoom: inviteToRoom, origin: origin)
+                        RoomScreen(model: makeRoom(id), title: name, unread: unread, makeCalendar: makeCalendar, groupTools: groupTools, inviteToRoom: inviteToRoom, origin: origin, voice: voice, canJoinVoice: canJoinVoice)
                     case let .channel(route):
                         RoomChannelContainer(route: route, makeChat: makeChat)
                     }
@@ -121,6 +124,8 @@ private struct RoomScreen: View {
     let groupTools: GroupTools
     let inviteToRoom: @MainActor (_ roomId: String, _ contact: Contact) async -> Bool
     let origin: URL
+    let voice: RoomVoiceModel
+    let canJoinVoice: @MainActor () -> Bool
 
     @State private var isCalendarShown = false
     @State private var isInviteShown = false
@@ -149,16 +154,49 @@ private struct RoomScreen: View {
 
             Section {
                 ForEach(model.voiceChannels) { channel in
-                    Label(channel.name, systemImage: "speaker.wave.2")
-                        .foregroundStyle(Palette.textPrimary)
+                    let inChannel = voice.channelId == channel.id && voice.phase != .idle
+                    Button {
+                        Task {
+                            if inChannel {
+                                await voice.leave()
+                            } else if canJoinVoice() {
+                                await voice.join(channelId: channel.id, name: channel.name)
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Label(channel.name, systemImage: inChannel ? "speaker.wave.3.fill" : "speaker.wave.2")
+                                .foregroundStyle(inChannel ? Palette.accent : Palette.textPrimary)
+                            Spacer()
+                            Text(inChannel ? "Выйти" : "Войти")
+                                .font(.subheadline)
+                                .foregroundStyle(Palette.accent)
+                        }
+                    }
+                    .accessibilityIdentifier("room.voice.\(channel.id)")
+                    ForEach(voice.presence.participants(in: channel.id), id: \.userId) { participant in
+                        let speaking = voice.channelId == channel.id && (voice.session?.participants.first { $0.userId == participant.userId }?.isSpeaking ?? false)
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(speaking ? Palette.accent : Palette.border)
+                                .frame(width: 8, height: 8)
+                            Text(memberName(participant.userId))
+                                .font(.subheadline)
+                                .foregroundStyle(Palette.textPrimary)
+                            Spacer()
+                            if participant.muted { Image(systemName: "mic.slash").foregroundStyle(Palette.textSecondary).accessibilityLabel("Микрофон выключен") }
+                            if participant.speakerOff { Image(systemName: "speaker.slash").foregroundStyle(Palette.textSecondary).accessibilityLabel("Звук выключен") }
+                        }
+                        .padding(.leading, 28)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("room.voice.participant.\(participant.userId)")
+                    }
                 }
                 if model.voiceChannels.isEmpty {
                     Text("Голосовых каналов нет").foregroundStyle(Palette.textSecondary)
                 }
             } header: {
                 Text("Голосовые каналы")
-            } footer: {
-                Text("Подключение к голосовым каналам появится на этапе звонков")
             }
             .listRowBackground(Palette.surface)
 
@@ -194,6 +232,9 @@ private struct RoomScreen: View {
             }
         }
         .task { await model.load() }
+        .task(id: model.voiceChannels.map(\.id)) {
+            await voice.watch(channelIds: model.voiceChannels.map(\.id))
+        }
         .refreshable { await model.load() }
         .sheet(isPresented: $isCalendarShown) {
             RoomCalendarSheet(model: makeCalendar(model.roomId), canCreate: model.canManage)
@@ -208,6 +249,14 @@ private struct RoomScreen: View {
                 await model.createChannel(name: name, kind: channel.kind)
             }
         }
+    }
+}
+
+extension RoomScreen {
+    fileprivate func memberName(_ userId: String) -> String {
+        if let member = model.details?.members.first(where: { $0.userId == userId }) { return member.displayName }
+        if let voiceName = voice.session?.participants.first(where: { $0.userId == userId })?.username { return voiceName }
+        return "Пользователь"
     }
 }
 

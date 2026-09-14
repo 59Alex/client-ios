@@ -36,11 +36,15 @@ final class AppDependencies {
         var makeCallModel: (@MainActor (CallParticipant) -> P2PCallModel)?
         var chatAPI: (any ChatAPI)?
         var makeSignalRoom: (@MainActor () -> any SignalRoom)?
+        /// Медиакомната для групповых звонков и голосовых каналов.
+        var makeCallRoom: (@MainActor () -> any CallRoom)?
         var fileAPI: (any FileAPI)?
         var contacts: (any ContactsRepository)?
         var inbox: (any InboxAPI)?
         var rooms: (any RoomsAPI)?
         var settings: (any SettingsAPI)?
+        var groupCalls: (any GroupCallAPI)?
+        var roomVoice: (any RoomVoiceAPI)?
     }
 
     init(
@@ -85,6 +89,10 @@ final class AppDependencies {
         let inbox = overrides.inbox ?? RemoteInboxAPI(main: mainClient, notifications: notificationClient)
         let roomsAPI = overrides.rooms ?? RemoteRoomsAPI(main: mainClient)
         let settingsAPI = overrides.settings ?? RemoteSettingsAPI(settings: settingsClient, users: usersClient, main: mainClient)
+        let groupCallAPI = overrides.groupCalls ?? RemoteGroupCallAPI(main: mainClient, events: eventsClient, outbox: outboxClient, eventStream: eventStream)
+        let roomVoiceAPI = overrides.roomVoice ?? RemoteRoomVoiceAPI(main: mainClient, events: eventsClient, outbox: outboxClient, eventStream: eventStream)
+        let callRoom: @MainActor () -> any CallRoom = overrides.makeCallRoom ?? { LiveKitCallRoom() }
+        let usesStubRooms = overrides.makeCallRoom != nil
         let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client)
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("connect-media", isDirectory: true)
@@ -106,6 +114,9 @@ final class AppDependencies {
             uiOrigin: config.uiOrigin,
             settings: settingsAPI,
             deviceId: Self.deviceId(),
+            groupCallAPI: groupCallAPI,
+            groupCalls: GroupCallModel(me: me, api: groupCallAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: { usesStubRooms ? true : await MicrophonePermission.request() }),
+            roomVoice: RoomVoiceModel(me: me, api: roomVoiceAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: { usesStubRooms ? true : await MicrophonePermission.request() }),
             makeRoom: { RoomModel(roomId: $0, me: user.userId, api: roomsAPI) },
             makeCalendar: { RoomCalendarModel(roomId: $0, api: roomsAPI) },
             makeFeed: { FeedModel(feedId: $0, me: chatUser, api: roomsAPI) },
@@ -147,11 +158,14 @@ final class AppDependencies {
                     makeCallModel: { UITestStub.makeCallModel(me: $0, arguments: arguments) },
                     chatAPI: UITestStub.makeChatAPI(),
                     makeSignalRoom: { FakeCallRoom() },
+                    makeCallRoom: { UITestStub.makeGroupRoom() },
                     fileAPI: UITestStub.makeFileAPI(),
                     contacts: UITestStub.makeContactsRepository(),
                     inbox: UITestStub.makeInboxAPI(),
                     rooms: UITestStub.makeRoomsAPI(),
-                    settings: FakeSettingsAPI(userId: "qa-1", name: "QA Wallpaper", username: "@qa_wallpaper_1", email: "qa@example.com", takenUsernames: ["@qa_wallpaper_2"], sticker: GreetingSticker(urlS3: "user-gallery/qa-3/greeting.png", extension: ".png"))
+                    settings: FakeSettingsAPI(userId: "qa-1", name: "QA Wallpaper", username: "@qa_wallpaper_1", email: "qa@example.com", takenUsernames: ["@qa_wallpaper_2"], sticker: GreetingSticker(urlS3: "user-gallery/qa-3/greeting.png", extension: ".png")),
+                    groupCalls: UITestStub.makeGroupCallAPI(arguments: arguments),
+                    roomVoice: FakeRoomVoiceAPI(connected: [ChannelParticipantEvent(userId: "qa-2", channelId: "channel-voice", muted: true, kind: .connect)])
                 )
             )
         }
@@ -183,6 +197,9 @@ final class SignedInDependencies {
     let uiOrigin: URL
     let settings: any SettingsAPI
     let deviceId: String
+    let groupCallAPI: any GroupCallAPI
+    let groupCalls: GroupCallModel
+    let roomVoice: RoomVoiceModel
     let makeRoom: @MainActor (String) -> RoomModel
     let makeCalendar: @MainActor (String) -> RoomCalendarModel
     let makeFeed: @MainActor (String) -> FeedModel
@@ -207,6 +224,9 @@ final class SignedInDependencies {
         uiOrigin: URL,
         settings: any SettingsAPI,
         deviceId: String,
+        groupCallAPI: any GroupCallAPI,
+        groupCalls: GroupCallModel,
+        roomVoice: RoomVoiceModel,
         makeRoom: @escaping @MainActor (String) -> RoomModel,
         makeCalendar: @escaping @MainActor (String) -> RoomCalendarModel,
         makeFeed: @escaping @MainActor (String) -> FeedModel,
@@ -230,6 +250,9 @@ final class SignedInDependencies {
         self.uiOrigin = uiOrigin
         self.settings = settings
         self.deviceId = deviceId
+        self.groupCallAPI = groupCallAPI
+        self.groupCalls = groupCalls
+        self.roomVoice = roomVoice
         self.makeRoom = makeRoom
         self.makeCalendar = makeCalendar
         self.makeFeed = makeFeed

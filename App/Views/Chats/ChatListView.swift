@@ -121,6 +121,9 @@ private struct ChatScreenContainer: View {
 struct GroupTools {
     let contacts: @MainActor () -> [Contact]
     let invite: @MainActor (_ groupId: String, _ contact: Contact) async -> Bool
+    /// Звонок в группу: участники группы вызываются все сразу.
+    var startCall: (@MainActor (_ groupId: String, _ title: String, _ memberUserIds: [String]) async -> Void)?
+    var canCall: @MainActor () -> Bool = { true }
 }
 
 private struct ChatRow: View {
