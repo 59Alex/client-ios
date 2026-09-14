@@ -421,6 +421,8 @@ private struct ProfileView: View {
             .toolbarBackground(Palette.chrome, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
         }
+        // Лист живёт в своей презентации: смена темы внутри него должна сразу менять и системные цвета.
+        .preferredColorScheme(Palette.colorScheme)
         .task { card = try? await dependencies.users.card(userId: user.userId) }
         .onChange(of: avatarItem) { _, item in
             guard let item else { return }
