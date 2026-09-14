@@ -21,7 +21,6 @@ final class AppDependencies {
     let session: SessionModel
     /// Оформление живёт дольше сессии: экран входа уже в выбранной теме.
     let appearance: AppearanceModel
-    let meetings: any MeetingsAPI
 
     private let mainClient: HTTPClient
     private let eventsClient: HTTPClient
@@ -244,6 +243,7 @@ final class SignedInDependencies {
     let uiOrigin: URL
     let settings: any SettingsAPI
     let appearance: AppearanceModel
+    let meetings: any MeetingsAPI
     let navigationStore: NavigationStore
     let deviceId: String
     let groupCallAPI: any GroupCallAPI
