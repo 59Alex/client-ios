@@ -16,6 +16,8 @@ final class VideoCircleRecorder: NSObject {
     private(set) var state: State = .idle
     private(set) var elapsed: TimeInterval = 0
     let session = AVCaptureSession()
+    /// Запуск и остановка сессии блокируют поток, поэтому идут в своей очереди.
+    private let sessionQueue = SessionQueue()
 
     private let output = AVCaptureMovieFileOutput()
     private var configured = false
@@ -32,9 +34,7 @@ final class VideoCircleRecorder: NSObject {
             state = .idle
             return false
         }
-        // Запуск сессии блокирует поток: уводим его с главного актора.
-        nonisolated(unsafe) let running = session
-        await Task.detached { running.startRunning() }.value
+        await sessionQueue.run(SessionBox(session: session), start: true)
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("circle-\(UUID().uuidString).mov")
         output.maxRecordedDuration = CMTime(seconds: Self.maxDuration, preferredTimescale: 600)
         output.startRecording(to: url, recordingDelegate: self)
@@ -77,8 +77,9 @@ final class VideoCircleRecorder: NSObject {
         startedAt = nil
         elapsed = 0
         state = .idle
-        nonisolated(unsafe) let running = session
-        Task.detached { running.stopRunning() }
+        let queue = sessionQueue
+        let box = SessionBox(session: session)
+        Task { await queue.run(box, start: false) }
     }
 
     private func configure() -> Bool {
@@ -150,4 +151,22 @@ extension VideoCircleRecorder: AVCaptureFileOutputRecordingDelegate {
             }
         }
     }
+}
+
+/// Последовательная очередь сессии камеры: AVCaptureSession живёт на ней, а не на главном акторе.
+private final class SessionQueue: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "ru.cnnect.circle-session")
+
+    func run(_ box: SessionBox, start: Bool) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            queue.async {
+                if start { box.session.startRunning() } else { box.session.stopRunning() }
+                continuation.resume()
+            }
+        }
+    }
+}
+
+private struct SessionBox: @unchecked Sendable {
+    let session: AVCaptureSession
 }
