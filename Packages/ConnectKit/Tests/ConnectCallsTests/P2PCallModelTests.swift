@@ -69,6 +69,29 @@ struct P2PCallModelTests {
         #expect(model.statusText == "Вызов активен")
     }
 
+    @Test("камера собеседника появляется трансляцией, её снятие не завершает звонок")
+    func remoteCamera() async throws {
+        let (model, box) = makeModel()
+        await model.call(peer)
+        let room = try #require(box.rooms.last)
+        room.emitRemoteAudio(userId: "peer")
+        room.emitRemoteShare(userId: "peer")
+        await settle()
+
+        let share = try #require(model.shares.items.first)
+        #expect(share.kind == .camera)
+        #expect(model.videoTrack(for: share) as? String == "TR_share_video")
+        #expect(!share.isReady)
+        room.emit(.trackSubscribed(trackId: "TR_share_video"))
+        await settle()
+        #expect(model.shares.items.first?.isReady == true)
+
+        room.emit(.trackUnpublished(participant: "share#1", trackId: "TR_share_video"))
+        await settle()
+        #expect(model.shares.items.isEmpty)
+        #expect(model.phase != .idle)
+    }
+
     @Test("собеседник снял аудиопоток — звонок завершается и удаляется")
     func remoteHangUp() async throws {
         let (model, box) = makeModel()

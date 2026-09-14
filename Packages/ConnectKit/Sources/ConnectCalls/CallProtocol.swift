@@ -59,11 +59,19 @@ public struct CallClientData: Codable, Sendable, Equatable {
     public var userId: String
     public var username: String?
     public var sessionId: String?
+    /// Отдельное подключение трансляции: `SHARE` у камеры и экрана, у голоса поля нет.
+    public var streamType: String?
+    public var streamId: String?
+    /// `WEB_CAMERA` или `SHARE_DISPLAY`.
+    public var shareType: String?
 
-    public init(userId: String, username: String?, sessionId: String?) {
+    public init(userId: String, username: String?, sessionId: String?, streamType: String? = nil, streamId: String? = nil, shareType: String? = nil) {
         self.userId = userId
         self.username = username
         self.sessionId = sessionId
+        self.streamType = streamType
+        self.streamId = streamId
+        self.shareType = shareType
     }
 
     public func encoded() -> String {

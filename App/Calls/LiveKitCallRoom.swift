@@ -60,6 +60,15 @@ final class LiveKitCallRoom: CallRoom {
         AudioManager.shared.isSpeakerOutputPreferred = enabled
     }
 
+    func remoteVideoTrack(trackId: String) -> AnyObject? {
+        for participant in room.remoteParticipants.values {
+            if let publication = participant.trackPublications.values.first(where: { $0.sid.stringValue == trackId }) {
+                return publication.track as? VideoTrack
+            }
+        }
+        return nil
+    }
+
     func send(_ packet: Data, topic: String) async throws {
         if packet.count <= CallProtocol.maxDataPacketBytes {
             try await room.localParticipant.publish(data: packet, options: DataPublishOptions(topic: topic, reliable: true))
@@ -94,6 +103,10 @@ private final class RoomObserver: NSObject, RoomDelegate, Sendable {
 
     func room(_ room: Room, participant: RemoteParticipant, didPublishTrack publication: RemoteTrackPublication) {
         published(publication, by: participant)
+    }
+
+    func room(_ room: Room, participant: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) {
+        continuation.yield(.trackSubscribed(trackId: publication.sid.stringValue))
     }
 
     func room(_ room: Room, participant: RemoteParticipant, didUnpublishTrack publication: RemoteTrackPublication) {

@@ -7,10 +7,15 @@ struct CallView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if !model.shares.items.isEmpty {
+                ShareStage(shares: model.shares.items) { model.videoTrack(for: $0) }
+                    .padding(.top, 12)
+                    .padding(.horizontal, 12)
+            }
             Spacer(minLength: 24)
 
             VStack(spacing: 16) {
-                Avatar(name: peerName, size: 112)
+                Avatar(name: peerName, size: model.shares.items.isEmpty ? 112 : 64)
                     .overlay {
                         if model.isRemoteSpeaking {
                             Circle().strokeBorder(Palette.accent, lineWidth: 3).padding(-6)

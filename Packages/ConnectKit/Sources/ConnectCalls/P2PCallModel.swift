@@ -74,6 +74,12 @@ public final class P2PCallModel {
     private var room: (any CallRoom)?
     private var roomEvents: Task<Void, Never>?
     private var tracker = RemoteStreamTracker()
+    /// Камера и экран собеседника.
+    public private(set) var shares = RemoteShares()
+
+    public func videoTrack(for share: RemoteShare) -> AnyObject? {
+        room?.remoteVideoTrack(trackId: share.trackId)
+    }
     private var remoteAudioStream: RemoteCallStream?
     private var localSpeaking = false
     private var cancelledCallIds: Set<String> = []
@@ -310,6 +316,7 @@ public final class P2PCallModel {
     private func listen(to room: any CallRoom, generation: Int) {
         roomEvents?.cancel()
         tracker = RemoteStreamTracker()
+        shares = RemoteShares()
         let events = room.events
         roomEvents = Task { [weak self] in
             for await event in events {
@@ -321,6 +328,7 @@ public final class P2PCallModel {
 
     private func handle(_ event: CallRoomEvent) async {
         for change in tracker.handle(event) {
+            shares.apply(change, me: me.userId)
             switch change {
             case let .added(stream):
                 guard stream.hasAudio, !stream.hasVideo, stream.clientData?.userId != me.userId else { continue }
@@ -336,6 +344,8 @@ public final class P2PCallModel {
         }
 
         switch event {
+        case let .trackSubscribed(trackId):
+            shares.markSubscribed(trackId: trackId)
         case let .data(topic, payload):
             guard topic == CallProtocol.signalTopic, let packet = SignalPacket.decode(payload), let signal = CallSignal(packet: packet) else { return }
             guard signal.userId != me.userId else { return }
@@ -530,6 +540,7 @@ public final class P2PCallModel {
         acceptedAt = nil
         remoteAudioStream = nil
         tracker = RemoteStreamTracker()
+        shares = RemoteShares()
         isMuted = false
         isRemoteMuted = false
         isRemoteSpeaking = false

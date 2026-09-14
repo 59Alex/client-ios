@@ -9,6 +9,8 @@ public enum CallTrackKind: Sendable, Equatable {
 public enum CallRoomEvent: Sendable, Equatable {
     case trackPublished(participant: String, trackId: String, name: String, kind: CallTrackKind)
     case trackUnpublished(participant: String, trackId: String)
+    /// Дорожка подписана: видео уже можно отрисовать.
+    case trackSubscribed(trackId: String)
     case participantLeft(participant: String)
     case data(topic: String, payload: Data)
     case localSpeakingChanged(Bool)
@@ -35,6 +37,8 @@ public protocol CallRoom: SignalRoom {
     func publishMicrophone(trackName: String, muted: Bool) async throws
     func setMicrophoneMuted(_ muted: Bool) async throws
     func setSpeakerOutput(_ enabled: Bool)
+    /// Видеодорожка SDK для отрисовки; модели звонка её не разбирают.
+    func remoteVideoTrack(trackId: String) -> AnyObject?
 }
 
 /// Удалённый «поток» OpenVidu: дорожки участника с одним ключом `k`.
@@ -44,6 +48,9 @@ public struct RemoteCallStream: Sendable, Equatable {
     public var clientData: CallClientData?
     public var hasAudio: Bool
     public var hasVideo: Bool
+    public var createdAtMilliseconds: Int64 = 0
+    /// Видеодорожка потока, когда он объявлен.
+    public var videoTrackId: String?
 }
 
 /// Собирает дорожки в потоки так же, как фасад веб-клиента: поток объявляется, когда
@@ -93,7 +100,8 @@ public struct RemoteStreamTracker: Sendable {
                 key: name.key,
                 clientData: CallClientData.decode(name.clientData),
                 hasAudio: name.hasAudio,
-                hasVideo: name.hasVideo
+                hasVideo: name.hasVideo,
+                createdAtMilliseconds: name.createdAtMilliseconds
             ),
             tracks: [:],
             announced: false
@@ -106,6 +114,7 @@ public struct RemoteStreamTracker: Sendable {
         let hasVideo = entry.tracks.values.contains(.video)
         if !entry.announced, hasAudio == entry.stream.hasAudio, hasVideo == entry.stream.hasVideo {
             entry.announced = true
+            entry.stream.videoTrackId = entry.tracks.first { $0.value == .video }?.key
             changes.append(.added(entry.stream))
         }
         entries[streamId] = entry
@@ -137,5 +146,66 @@ public struct CallSummaryReport: Sendable, Equatable {
         self.roomId = roomId
         self.durationSeconds = durationSeconds
         self.startedAt = startedAt
+    }
+}
+
+/// Трансляция участника: камера или экран (`ShareRenderInfo` веб-клиента).
+public struct RemoteShare: Sendable, Equatable, Identifiable {
+    public enum Kind: String, Sendable {
+        case camera = "WEB_CAMERA"
+        case screen = "SHARE_DISPLAY"
+    }
+
+    public var userId: String
+    public var username: String?
+    public var kind: Kind
+    public var trackId: String
+    public var createdAtMilliseconds: Int64
+    /// Видео получено; до этого на месте трансляции индикатор загрузки.
+    public var isReady = false
+    fileprivate var streamKey: String
+
+    /// Одна трансляция на пользователя и вид, как `${userId}-${shareType}` на вебе.
+    public var id: String { "\(userId)-\(kind.rawValue)" }
+}
+
+/// Трансляции комнаты: у пользователя остаётся только самая новая камера и самый новый экран,
+/// потому что веб при подключении новых участников перевыпускает поток.
+public struct RemoteShares: Sendable, Equatable {
+    public private(set) var items: [RemoteShare] = []
+
+    public init() {}
+
+    /// Возвращает `true`, если список изменился.
+    @discardableResult
+    public mutating func apply(_ change: RemoteStreamTracker.Change, me: String) -> Bool {
+        switch change {
+        case let .added(stream):
+            guard stream.hasVideo, let trackId = stream.videoTrackId, let data = stream.clientData, data.userId != me else { return false }
+            let kind: RemoteShare.Kind = data.shareType == RemoteShare.Kind.screen.rawValue ? .screen : .camera
+            let share = RemoteShare(userId: data.userId, username: data.username, kind: kind, trackId: trackId, createdAtMilliseconds: stream.createdAtMilliseconds, streamKey: stream.participant + ":" + stream.key)
+            if let index = items.firstIndex(where: { $0.id == share.id }) {
+                guard items[index].createdAtMilliseconds <= share.createdAtMilliseconds else { return false }
+                items[index] = share
+            } else {
+                items.append(share)
+            }
+            return true
+        case let .removed(stream):
+            let key = stream.participant + ":" + stream.key
+            let before = items.count
+            items.removeAll { $0.streamKey == key }
+            return items.count != before
+        }
+    }
+
+    public mutating func removeAll() {
+        items.removeAll()
+    }
+
+    public mutating func markSubscribed(trackId: String) {
+        for index in items.indices where items[index].trackId == trackId {
+            items[index].isReady = true
+        }
     }
 }
