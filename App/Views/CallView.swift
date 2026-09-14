@@ -52,9 +52,17 @@ struct CallView: View {
             LocalCameraPreview(camera: model.camera).padding(16)
         }
         .overlay(alignment: .topLeading) {
-            if let onMinimize, model.phase != .incoming {
-                MinimizeButton(action: onMinimize).padding(8)
+            HStack(spacing: 4) {
+                if let onMinimize, model.phase != .incoming {
+                    MinimizeButton(action: onMinimize)
+                }
+                if model.phase != .incoming {
+                    AudioRoutePicker(tint: UIColor(Palette.textPrimary))
+                        .frame(width: 44, height: 44)
+                        .background(Palette.surface, in: Circle())
+                }
             }
+            .padding(8)
         }
         .background(Palette.canvas.ignoresSafeArea())
     }
