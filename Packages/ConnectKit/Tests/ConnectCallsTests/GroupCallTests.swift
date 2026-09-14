@@ -150,6 +150,23 @@ struct GroupCallTests {
         #expect(await api.declined == ["g2"])
     }
 
+    @Test("«Позвонить снова»: занятый звонок в группу повторяется с теми же участниками")
+    func groupCallAgain() async {
+        let api = FakeGroupCallAPI()
+        await api.setBusy(true)
+        let model = GroupCallModel(me: CallParticipant(userId: "me", name: "Я", username: "@me"), api: api, rtcUrl: URL(string: "wss://x")!, makeRoom: { FakeCallRoom() }, sessionId: { nil }, requestMicrophone: { true }, sleep: { _ in await Task.yield() })
+
+        await model.start(groupChatId: "g1", name: "Группа", memberUserIds: ["me", "u2"])
+        #expect(model.phase == .failed("Занят"))
+        #expect(model.canCallAgain)
+
+        await api.setBusy(false)
+        await model.callAgain()
+        #expect(await api.created.map(\.chat) == ["g1"])
+        #expect(await api.created.first?.callees == ["u2"])
+        #expect(!model.canCallAgain)
+    }
+
     @Test("голосовой канал: микрофон до /create, клиентские данные без обёртки, управление и выход")
     func roomVoice() async throws {
         let api = FakeRoomVoiceAPI()

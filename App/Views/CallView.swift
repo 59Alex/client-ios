@@ -106,9 +106,19 @@ struct CallView: View {
                 }
             }
         case .failed:
-            Button("Закрыть") { Task { await model.hangUp() } }
-                .buttonStyle(PrimaryButtonStyle())
-                .accessibilityIdentifier("call.close")
+            VStack(spacing: 12) {
+                if model.canCallAgain {
+                    Button { Task { await model.callAgain() } } label: {
+                        Label("Позвонить снова", systemImage: "phone.fill")
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("call.again")
+                }
+                Button("Закрыть") { Task { await model.hangUp() } }
+                    .buttonStyle(.bordered)
+                    .frame(minHeight: 44)
+                    .accessibilityIdentifier("call.close")
+            }
         default:
             HStack(spacing: 16) {
                 RoundCallButton(
