@@ -20,6 +20,17 @@ enum UITestStub {
     static let incomingCallArgument = "-ui-test-incoming-call"
     /// Сессия уже сохранена: приложение открывается сразу на главном экране.
     static let signedInArgument = "-ui-test-signed-in"
+    /// Не стирать последнее место при запуске: проверка восстановления навигации.
+    static let keepNavigationArgument = "-ui-test-keep-navigation"
+
+    /// Отдельный набор настроек, чтобы тесты не видели навигацию друг друга.
+    static func navigationDefaults(arguments: [String]) -> UserDefaults {
+        let defaults = UserDefaults(suiteName: "ui-test-navigation") ?? .standard
+        if !arguments.contains(keepNavigationArgument) {
+            defaults.removePersistentDomain(forName: "ui-test-navigation")
+        }
+        return defaults
+    }
     /// Логин, для которого сервис требует подтвердить email.
     static let verificationUsername = "@verify"
     static let verificationCode = "123456"

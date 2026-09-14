@@ -51,6 +51,7 @@ final class AppDependencies {
         var appearanceStore: (any AppearanceStore)?
         var presence: (any PresenceAPI)?
         var backgrounds: (any BackgroundsAPI)?
+        var navigationDefaults: UserDefaults?
     }
 
     init(
@@ -128,6 +129,7 @@ final class AppDependencies {
             uiOrigin: config.uiOrigin,
             settings: settingsAPI,
             appearance: appearance,
+            navigationStore: NavigationStore(defaults: overrides.navigationDefaults ?? .standard),
             deviceId: Self.deviceId(),
             groupCallAPI: groupCallAPI,
             directory: UserDirectory(repository: contactsRepository),
@@ -186,7 +188,8 @@ final class AppDependencies {
                     appearance: FakeAppearanceAPI(preferences: UITestStub.appearance(arguments: arguments)),
                     appearanceStore: MemoryAppearanceStore(UITestStub.appearance(arguments: arguments)),
                     presence: FakePresenceAPI(snapshot: [PresenceUpdate(userId: "qa-2", status: .online)]),
-                    backgrounds: FakeBackgroundsAPI()
+                    backgrounds: FakeBackgroundsAPI(),
+                    navigationDefaults: UITestStub.navigationDefaults(arguments: arguments)
                 )
             )
         }
@@ -220,6 +223,7 @@ final class SignedInDependencies {
     let uiOrigin: URL
     let settings: any SettingsAPI
     let appearance: AppearanceModel
+    let navigationStore: NavigationStore
     let deviceId: String
     let groupCallAPI: any GroupCallAPI
     let directory: UserDirectory
@@ -252,6 +256,7 @@ final class SignedInDependencies {
         uiOrigin: URL,
         settings: any SettingsAPI,
         appearance: AppearanceModel,
+        navigationStore: NavigationStore,
         deviceId: String,
         groupCallAPI: any GroupCallAPI,
         directory: UserDirectory,
@@ -283,6 +288,7 @@ final class SignedInDependencies {
         self.uiOrigin = uiOrigin
         self.settings = settings
         self.appearance = appearance
+        self.navigationStore = navigationStore
         self.deviceId = deviceId
         self.groupCallAPI = groupCallAPI
         self.directory = directory
