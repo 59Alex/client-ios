@@ -122,6 +122,12 @@ private struct RoomScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            // Трансляции участников видны, пока мы в голосовом канале этой комнаты.
+            if let session = voice.session, model.voiceChannels.contains(where: { $0.id == voice.channelId }), !session.shares.items.isEmpty {
+                ShareStage(shares: session.shares.items) { session.videoTrack(for: $0) }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(name)
@@ -261,6 +267,7 @@ private struct RoomScreen: View {
                     .font(.subheadline)
                     .foregroundStyle(Palette.roomName)
                 Spacer()
+                if participant.streamOn { Image(systemName: "video.fill").foregroundStyle(Palette.danger).accessibilityLabel("Ведёт трансляцию") }
                 if participant.muted { Image(systemName: "mic.slash").foregroundStyle(Palette.textSecondary).accessibilityLabel("Микрофон выключен") }
                 if participant.speakerOff { Image(systemName: "speaker.slash").foregroundStyle(Palette.textSecondary).accessibilityLabel("Звук выключен") }
             }

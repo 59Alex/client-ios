@@ -6,6 +6,7 @@ import SwiftUI
 struct GroupCallView: View {
     let model: GroupCallModel
     let names: [String: String]
+    var onMinimize: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,6 +52,11 @@ struct GroupCallView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .topTrailing) {
             LocalCameraPreview(camera: model.camera).padding(16)
+        }
+        .overlay(alignment: .topLeading) {
+            if let onMinimize, model.phase != .incoming {
+                MinimizeButton(action: onMinimize).padding(8)
+            }
         }
         .background(Palette.canvas.ignoresSafeArea())
     }

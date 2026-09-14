@@ -4,6 +4,7 @@ import SwiftUI
 /// Экран личного звонка поверх приложения: входящий вызов, соединение и разговор.
 struct CallView: View {
     let model: P2PCallModel
+    var onMinimize: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,6 +50,11 @@ struct CallView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .topTrailing) {
             LocalCameraPreview(camera: model.camera).padding(16)
+        }
+        .overlay(alignment: .topLeading) {
+            if let onMinimize, model.phase != .incoming {
+                MinimizeButton(action: onMinimize).padding(8)
+            }
         }
         .background(Palette.canvas.ignoresSafeArea())
     }
