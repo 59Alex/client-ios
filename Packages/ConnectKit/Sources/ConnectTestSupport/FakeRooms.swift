@@ -1,3 +1,4 @@
+import ConnectNetworking
 import ConnectChat
 import ConnectRooms
 import Foundation
@@ -21,8 +22,12 @@ public actor FakeRoomsAPI: RoomsAPI {
         events: [String: [RoomEvent]] = [:],
         feeds: [PostFeedCard] = [],
         feedRoles: [String: MemberRole] = [:],
-        posts: [String: [FeedPost]] = [:]
+        posts: [String: [FeedPost]] = [:],
+        feedMembers: [String: FeedMembers] = [:],
+        comments: [String: [PostComment]] = [:]
     ) {
+        membersByFeed = feedMembers
+        commentsByPost = comments
         roomCards = rooms.map { RoomCard(id: $0.id, name: $0.name, textChannelIds: $0.channels.filter { $0.kind == .text }.map(\.id)) }
         roomDetails = Dictionary(uniqueKeysWithValues: rooms.map { ($0.id, $0) })
         self.roles = roles
@@ -88,7 +93,7 @@ public actor FakeRoomsAPI: RoomsAPI {
 
     public func feedRole(feedId: String) async throws -> MemberRole? { feedRoles[feedId] }
 
-    public func feedPrivileges(feedId: String, userId: String) async throws -> FeedPrivileges { FeedPrivileges() }
+    public func feedPrivileges(feedId: String, userId: String) async throws -> FeedPrivileges { privilegesByFeed[feedId] ?? FeedPrivileges() }
 
     public func posts(feedId: String, page: Int) async throws -> [FeedPost] {
         let newestFirst = (feedPosts[feedId] ?? []).sorted { $0.createdAtMilliseconds > $1.createdAtMilliseconds }
@@ -108,7 +113,67 @@ public actor FakeRoomsAPI: RoomsAPI {
         feedRoles[feedId] = subscribed ? .subscriber : nil
     }
 
+    public private(set) var moderationLog: [String] = []
+    public private(set) var viewedPosts: [String] = []
+    public private(set) var commentsByPost: [String: [PostComment]] = [:]
+    public var membersByFeed: [String: FeedMembers] = [:]
+    public var privilegesByFeed: [String: FeedPrivileges] = [:]
+    public var joinStatus: Int?
+
+    public func setMembers(_ members: FeedMembers, feedId: String) { membersByFeed[feedId] = members }
+    public func setPrivileges(_ privileges: FeedPrivileges, feedId: String) { privilegesByFeed[feedId] = privileges }
+    public func setJoinStatus(_ status: Int?) { joinStatus = status }
+    public func setComments(_ comments: [PostComment], postId: String) { commentsByPost[postId] = comments }
+
+    public func addModerator(feedId: String, userId: String, privileges: FeedPrivileges) async throws {
+        moderationLog.append("moderator+:\(userId):\(privileges.canBanUsers)")
+        var members = membersByFeed[feedId] ?? FeedMembers()
+        if let member = members.subscribers.first(where: { $0.userId == userId }) { members.moderators.append(member) }
+        membersByFeed[feedId] = members
+    }
+
+    public func removeModerator(feedId: String, userId: String) async throws {
+        moderationLog.append("moderator-:\(userId)")
+        membersByFeed[feedId]?.moderators.removeAll { $0.userId == userId }
+    }
+
+    public func setBanned(_ banned: Bool, feedId: String, userId: String) async throws {
+        moderationLog.append("\(banned ? "ban" : "unban"):\(userId)")
+        var members = membersByFeed[feedId] ?? FeedMembers()
+        if banned {
+            let member = (members.subscribers + members.moderators).first { $0.userId == userId } ?? .init(userId: userId, username: userId)
+            members.bannedUsers.append(member)
+        } else {
+            members.bannedUsers.removeAll { $0.userId == userId }
+        }
+        membersByFeed[feedId] = members
+    }
+
+    public func markPostViewed(postId: String) async throws { viewedPosts.append(postId) }
+
+    public func comments(postId: String) async throws -> [PostComment] { commentsByPost[postId] ?? [] }
+
+    public func createComment(postId: String, userId: String, text: String, timestamp: Int64) async throws -> PostComment {
+        counter += 1
+        let comment = PostComment(id: "comment-new-\(counter)", postId: postId, text: text, createdAtMilliseconds: timestamp, userId: userId, username: userId)
+        commentsByPost[postId, default: []].append(comment)
+        return comment
+    }
+
+    public func deleteComment(id: String) async throws {
+        for key in commentsByPost.keys { commentsByPost[key]?.removeAll { $0.id == id } }
+    }
+
+    public func addSubscriber(feedId: String, userId: String) async throws -> PostFeedCard? {
+        if let joinStatus { throw APIError.http(statusCode: joinStatus, body: nil) }
+        moderationLog.append("subscriber+:\(userId)")
+        membersByFeed[feedId, default: FeedMembers()].subscribers.append(.init(userId: userId, username: userId))
+        if feedCards.first(where: { $0.id == feedId }) == nil { feedCards.append(PostFeedCard(id: feedId, name: "Канал по ссылке")) }
+        return feedCards.first { $0.id == feedId }
+    }
+
     public func feedMembers(feedId: String) async throws -> FeedMembers {
-        FeedMembers(admin: .init(userId: "owner", username: "owner"), subscribers: [.init(userId: "me", username: "me")])
+        if let members = membersByFeed[feedId] { return members }
+        return FeedMembers(admin: .init(userId: "owner", username: "owner"), subscribers: [.init(userId: "me", username: "me")])
     }
 }

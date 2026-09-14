@@ -275,7 +275,7 @@ struct HomeView: View {
                 path: $navigation.roomsPath
             )
         case .feeds:
-            FeedsListView(model: dependencies.feeds, unread: dependencies.unread, makeFeed: dependencies.makeFeed)
+            FeedsListView(model: dependencies.feeds, unread: dependencies.unread, makeFeed: dependencies.makeFeed, origin: dependencies.uiOrigin, contacts: groupTools.contacts)
         case .contacts:
             ContactsView(model: dependencies.contacts, calls: calls, myUsername: dependencies.user.username) { route in
                 navigation.open(route)

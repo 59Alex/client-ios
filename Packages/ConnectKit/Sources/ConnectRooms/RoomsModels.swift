@@ -1,4 +1,5 @@
 import ConnectChat
+import ConnectNetworking
 import Foundation
 import Observation
 
@@ -248,6 +249,35 @@ public final class FeedsModel {
             return "Не удалось создать канал"
         }
     }
+
+    /// Подписка по ссылке `/post-feed-invite/<code>`; в ответ id канала или текст ошибки веб-клиента.
+    public func join(link: String) async -> Result<String, JoinError> {
+        guard let feedId = InviteLinks.feedId(from: link) else { return .failure(.broken) }
+        do {
+            _ = try await api.addSubscriber(feedId: feedId, userId: me)
+            await load()
+            return .success(feedId)
+        } catch let APIError.http(statusCode, _) where statusCode == 404 {
+            return .failure(.notFound)
+        } catch let APIError.http(statusCode, _) where statusCode == 403 {
+            return .failure(.forbidden)
+        } catch {
+            return .failure(.other)
+        }
+    }
+
+    public enum JoinError: Error, Equatable {
+        case broken, notFound, forbidden, other
+
+        public var message: String {
+            switch self {
+            case .broken: "Ссылка приглашения в канал повреждена."
+            case .notFound: "Канал больше не существует."
+            case .forbidden: "Нет доступа к этому каналу."
+            case .other: "Не удалось подписаться на канал. Попробуйте ещё раз."
+            }
+        }
+    }
 }
 
 /// Открытый канал-лента: посты от старых к новым, догрузка старых страниц, публикация, подписка.
@@ -279,6 +309,13 @@ public final class FeedModel {
     public var isSubscribed: Bool { role != nil && role != .banned }
     public var canPost: Bool { role == .admin || (role == .moderator && privileges.canCreatePosts) }
     public var canDelete: Bool { role == .admin }
+    private var isAdmin: Bool { role == .admin }
+    public var canAssignModerators: Bool { isAdmin || (role == .moderator && privileges.canAssignModerators) }
+    public var canBan: Bool { isAdmin || (role == .moderator && privileges.canBanUsers) }
+    public var canUnban: Bool { isAdmin || (role == .moderator && privileges.canUnbanUsers) }
+    public private(set) var memberList: FeedMembers?
+    public private(set) var moderationError: String?
+    private var viewedPostIds: Set<String> = []
     /// Админ не может отписаться от своего канала.
     public var canUnsubscribe: Bool { role == .subscriber || role == .moderator }
 
@@ -333,6 +370,10 @@ public final class FeedModel {
 
     public func setSubscribed(_ subscribed: Bool) async {
         do {
+            // Модератор сначала снимает с себя права, как «Отписаться» веб-клиента.
+            if !subscribed, role == .moderator {
+                try await api.removeModerator(feedId: feedId, userId: me.userId)
+            }
             try await api.setSubscribed(subscribed, feedId: feedId, userId: me.userId)
             await load()
         } catch {
@@ -349,9 +390,149 @@ public final class FeedModel {
         try? await api.feedMembers(feedId: feedId)
     }
 
+    public func commentsModel(postId: String) -> PostCommentsModel {
+        PostCommentsModel(postId: postId, me: me, api: api, now: now)
+    }
+
+    public func loadMembers() async {
+        if let list = try? await api.feedMembers(feedId: feedId) { memberList = list }
+    }
+
+    /// Секции участников веб-клиента: забаненные не показываются среди модераторов и подписчиков.
+    public var visibleModerators: [FeedMembers.Member] {
+        guard let list = memberList else { return [] }
+        let banned = Set(list.bannedUsers.map(\.userId))
+        return list.moderators.filter { !banned.contains($0.userId) }
+    }
+
+    public var visibleSubscribers: [FeedMembers.Member] {
+        guard let list = memberList else { return [] }
+        let excluded = Set(list.bannedUsers.map(\.userId) + list.moderators.map(\.userId) + [list.admin?.userId].compactMap { $0 })
+        return list.subscribers.filter { !excluded.contains($0.userId) }
+    }
+
+    public func makeModerator(_ userId: String, privileges: FeedPrivileges) async {
+        guard canAssignModerators else { return }
+        await moderate("Не удалось назначить модератора") { try await self.api.addModerator(feedId: self.feedId, userId: userId, privileges: privileges) }
+    }
+
+    public func removeModerator(_ userId: String) async {
+        guard canAssignModerators else { return }
+        await moderate("Не удалось снять модератора") { try await self.api.removeModerator(feedId: self.feedId, userId: userId) }
+    }
+
+    public func setBanned(_ banned: Bool, userId: String) async {
+        guard banned ? canBan : canUnban else { return }
+        await moderate(banned ? "Не удалось выдать бан" : "Не удалось разблокировать") { try await self.api.setBanned(banned, feedId: self.feedId, userId: userId) }
+    }
+
+    /// «Добавить из контактов»: контакт становится подписчиком.
+    public func addSubscriber(_ userId: String) async -> Bool {
+        do {
+            _ = try await api.addSubscriber(feedId: feedId, userId: userId)
+            await loadMembers()
+            return true
+        } catch {
+            moderationError = "Не удалось добавить в канал"
+            return false
+        }
+    }
+
+    /// Просмотр поста уходит один раз за сессию и только для постов с серверным UUID.
+    public func markViewed(_ postId: String) {
+        guard UUID(uuidString: postId) != nil, viewedPostIds.insert(postId).inserted else { return }
+        let api = api
+        Task { try? await api.markPostViewed(postId: postId) }
+    }
+
+    private func moderate(_ failure: String, _ action: @escaping () async throws -> Void) async {
+        do {
+            try await action()
+            moderationError = nil
+        } catch {
+            moderationError = failure
+        }
+        await loadMembers()
+    }
+
     private func merge(_ incoming: [FeedPost]) {
         var byId = Dictionary(posts.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
         for post in incoming { byId[post.id] = post }
         posts = byId.values.sorted { ($0.createdAtMilliseconds, $0.id) < ($1.createdAtMilliseconds, $1.id) }
+    }
+}
+
+/// Комментарии поста (`PostCommentsThread.tsx`): список, свой комментарий, удаление только своих.
+@MainActor
+@Observable
+public final class PostCommentsModel {
+    public static let pollInterval: Duration = .seconds(4)
+
+    public let postId: String
+    public private(set) var comments: [PostComment] = []
+    public private(set) var failed = false
+    public var draft = ""
+
+    private let me: ChatUser
+    private let api: any RoomsAPI
+    private let now: @Sendable () -> Date
+
+    public init(postId: String, me: ChatUser, api: any RoomsAPI, now: @escaping @Sendable () -> Date = Date.init) {
+        self.postId = postId
+        self.me = me
+        self.api = api
+        self.now = now
+    }
+
+    public func isOwn(_ comment: PostComment) -> Bool { comment.userId == me.userId }
+
+    public func load() async {
+        do {
+            let fresh = try await api.comments(postId: postId)
+            // Оптимистичные комментарии остаются, пока сервер их не вернул.
+            let local = comments.filter { pending in
+                pending.id.hasPrefix("local-") && !fresh.contains { $0.text == pending.text && $0.userId == pending.userId }
+            }
+            comments = (fresh + local).sorted { $0.createdAtMilliseconds < $1.createdAtMilliseconds }
+            failed = false
+        } catch is CancellationError {
+            return
+        } catch {
+            failed = comments.isEmpty
+        }
+    }
+
+    /// Опрос раз в 4 секунды, пока открыт тред.
+    public func poll() async {
+        while !Task.isCancelled {
+            await load()
+            try? await Task.sleep(for: Self.pollInterval)
+        }
+    }
+
+    public func send() async {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let timestamp = Int64(now().timeIntervalSince1970 * 1000)
+        let local = PostComment(id: "local-\(timestamp)", postId: postId, text: text, createdAtMilliseconds: timestamp, userId: me.userId, username: me.username)
+        comments.append(local)
+        draft = ""
+        do {
+            let created = try await api.createComment(postId: postId, userId: me.userId, text: text, timestamp: timestamp)
+            if let index = comments.firstIndex(where: { $0.id == local.id }) { comments[index] = created }
+        } catch {
+            comments.removeAll { $0.id == local.id }
+            draft = text
+        }
+    }
+
+    public func delete(_ comment: PostComment) async {
+        guard isOwn(comment), let index = comments.firstIndex(where: { $0.id == comment.id }) else { return }
+        let removed = comments.remove(at: index)
+        do {
+            try await api.deleteComment(id: comment.id)
+        } catch {
+            comments.insert(removed, at: min(index, comments.count))
+        }
     }
 }
