@@ -87,6 +87,7 @@ final class AppDependencies {
         let makeSignalRoom = overrides.makeSignalRoom ?? { LiveKitCallRoom() }
         let chatUser = ChatUser(userId: user.userId, username: user.username)
         let inbox = overrides.inbox ?? RemoteInboxAPI(main: mainClient, notifications: notificationClient)
+        let contactsRepository = overrides.contacts ?? RemoteContactsRepository(client: mainClient)
         let roomsAPI = overrides.rooms ?? RemoteRoomsAPI(main: mainClient)
         let settingsAPI = overrides.settings ?? RemoteSettingsAPI(settings: settingsClient, users: usersClient, main: mainClient)
         let groupCallAPI = overrides.groupCalls ?? RemoteGroupCallAPI(main: mainClient, events: eventsClient, outbox: outboxClient, eventStream: eventStream)
@@ -100,7 +101,7 @@ final class AppDependencies {
         return SignedInDependencies(
             user: user,
             status: status,
-            contacts: ContactsModel(userId: user.userId, repository: overrides.contacts ?? RemoteContactsRepository(client: mainClient)),
+            contacts: ContactsModel(userId: user.userId, repository: contactsRepository),
             calls: calls,
             users: RemoteUserRepository(client: mainClient),
             files: files,
@@ -115,6 +116,8 @@ final class AppDependencies {
             settings: settingsAPI,
             deviceId: Self.deviceId(),
             groupCallAPI: groupCallAPI,
+            directory: UserDirectory(repository: contactsRepository),
+            summaries: CallSummaryPublisher(me: chatUser, api: chatAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: makeSignalRoom),
             groupCalls: GroupCallModel(me: me, api: groupCallAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: { usesStubRooms ? true : await MicrophonePermission.request() }),
             roomVoice: RoomVoiceModel(me: me, api: roomVoiceAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: { usesStubRooms ? true : await MicrophonePermission.request() }),
             makeRoom: { RoomModel(roomId: $0, me: user.userId, api: roomsAPI) },
@@ -198,6 +201,8 @@ final class SignedInDependencies {
     let settings: any SettingsAPI
     let deviceId: String
     let groupCallAPI: any GroupCallAPI
+    let directory: UserDirectory
+    let summaries: CallSummaryPublisher
     let groupCalls: GroupCallModel
     let roomVoice: RoomVoiceModel
     let makeRoom: @MainActor (String) -> RoomModel
@@ -225,6 +230,8 @@ final class SignedInDependencies {
         settings: any SettingsAPI,
         deviceId: String,
         groupCallAPI: any GroupCallAPI,
+        directory: UserDirectory,
+        summaries: CallSummaryPublisher,
         groupCalls: GroupCallModel,
         roomVoice: RoomVoiceModel,
         makeRoom: @escaping @MainActor (String) -> RoomModel,
@@ -251,6 +258,8 @@ final class SignedInDependencies {
         self.settings = settings
         self.deviceId = deviceId
         self.groupCallAPI = groupCallAPI
+        self.directory = directory
+        self.summaries = summaries
         self.groupCalls = groupCalls
         self.roomVoice = roomVoice
         self.makeRoom = makeRoom

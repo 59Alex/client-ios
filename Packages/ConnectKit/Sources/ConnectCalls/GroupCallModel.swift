@@ -37,6 +37,8 @@ public final class GroupCallModel {
     private var someoneJoined = false
     /// Занят ли пользователь личным звонком или голосовым каналом.
     public var isBusyElsewhere: @MainActor () -> Bool = { false }
+    /// Итог звонка отправляет последний вышедший участник.
+    public var onCallSummary: (@MainActor (CallSummaryReport) async -> Void)?
 
     public init(
         me: CallParticipant,
@@ -182,7 +184,7 @@ public final class GroupCallModel {
             guard isCurrent(generation) else { return }
             try await connect(callId: callId, sessionId: session, generation: generation)
         } catch {
-            try? await api.leave(callId: callId, userId: me.userId, sessionId: session)
+            _ = try? await api.leave(callId: callId, userId: me.userId, sessionId: session)
             if isCurrent(generation) { fail("Не удалось подключиться к звонку") }
             return
         }
@@ -209,8 +211,12 @@ public final class GroupCallModel {
             // Хост, до которого никто не дошёл, удаляет звонок целиком.
             if callerUserId == me.userId, !someoneJoined, participants.isEmpty {
                 try? await api.deleteCall(callId: callId, sessionId: session)
-            } else {
-                try? await api.leave(callId: callId, userId: me.userId, sessionId: session)
+            } else if (try? await api.leave(callId: callId, userId: me.userId, sessionId: session)) == true,
+                      case let .active(startedAt) = phase, let groupChatId {
+                let report = CallSummaryReport(isGroup: true, roomId: groupChatId, durationSeconds: max(1, Int(now().timeIntervalSince(startedAt))), startedAt: startedAt)
+                await closeLocally()
+                await onCallSummary?(report)
+                return
             }
         }
         await closeLocally()
@@ -251,7 +257,7 @@ public final class GroupCallModel {
                 return
             } catch GroupCallAPIError.busy where attempt < 3 {
                 // Висит прежнее участие этой сессии: выходим и пробуем снова (200/400/600 мс).
-                try? await api.leave(callId: callId, userId: me.userId, sessionId: sessionId)
+                _ = try? await api.leave(callId: callId, userId: me.userId, sessionId: sessionId)
                 try await sleep(.milliseconds(200 * (attempt + 1)))
             }
         }

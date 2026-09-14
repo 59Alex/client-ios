@@ -123,3 +123,19 @@ public struct RemoteStreamTracker: Sendable {
         return entry.announced ? [.removed(entry.stream)] : []
     }
 }
+
+/// Завершённый звонок для сообщения-итога в чате.
+public struct CallSummaryReport: Sendable, Equatable {
+    public var isGroup: Bool
+    /// Личный чат или группа, где был звонок.
+    public var roomId: String
+    public var durationSeconds: Int
+    public var startedAt: Date
+
+    public init(isGroup: Bool, roomId: String, durationSeconds: Int, startedAt: Date) {
+        self.isGroup = isGroup
+        self.roomId = roomId
+        self.durationSeconds = durationSeconds
+        self.startedAt = startedAt
+    }
+}

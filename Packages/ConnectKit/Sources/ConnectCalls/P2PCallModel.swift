@@ -82,6 +82,9 @@ public final class P2PCallModel {
     private var trackKey = UUID().uuidString.lowercased()
     /// Занят ли пользователь другим звонком или голосовым каналом (правило одного активного звонка).
     public var isBusyElsewhere: @MainActor () -> Bool = { false }
+    /// Итог состоявшегося звонка; веб-клиент отправляет его от имени вызывающего.
+    public var onCallSummary: (@MainActor (CallSummaryReport) async -> Void)?
+    private var roomId: String?
 
     public init(
         me: CallParticipant,
@@ -262,6 +265,7 @@ public final class P2PCallModel {
     // MARK: - Комната
 
     private func connect(roomId: String, sessionId: String?, generation: Int) async throws {
+        self.roomId = roomId
         let deadline = now().addingTimeInterval(Self.connectBudget)
         for attempt in 0..<Self.connectAttempts {
             do {
@@ -475,9 +479,22 @@ public final class P2PCallModel {
     }
 
     private func finish(notifyServer: Bool) async {
+        let summary = summaryReport()
         if notifyServer { await deleteCurrentCall() }
         await closeRoom()
         reset()
+        if let summary { await onCallSummary?(summary) }
+    }
+
+    private func summaryReport() -> CallSummaryReport? {
+        guard callerUserId == me.userId, let roomId else { return nil }
+        let startedAt: Date
+        switch phase {
+        case let .active(started): startedAt = started
+        case let .reconnecting(started?): startedAt = started
+        default: return nil
+        }
+        return CallSummaryReport(isGroup: false, roomId: roomId, durationSeconds: max(1, Int(now().timeIntervalSince(startedAt))), startedAt: startedAt)
     }
 
     private func deleteCurrentCall() async {
@@ -509,6 +526,7 @@ public final class P2PCallModel {
         peer = nil
         callId = nil
         callerUserId = nil
+        roomId = nil
         acceptedAt = nil
         remoteAudioStream = nil
         tracker = RemoteStreamTracker()

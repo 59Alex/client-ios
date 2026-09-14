@@ -1,4 +1,5 @@
 import ConnectCalls
+import ConnectTestSupport
 import Foundation
 import Testing
 @testable import ConnectChat
@@ -144,4 +145,36 @@ struct ChatProtocolTests {
         #expect(NotificationStreamEvent.decode(#"{"kind":"sync","readMessageIds":[]}"#) == .changed(kind: "sync"))
         #expect(NotificationStreamEvent.decode("{}") == nil)
     }
+}
+
+@MainActor
+@Suite("Отправка итога звонка")
+struct CallSummaryPublisherTests {
+    @Test("итог звонка: текст веб-формата, callInfo и сигнал chat через временную сессию")
+    func publishes() async throws {
+        let api = FakeChatAPI(ownerUsername: "@me", messages: ["room": []])
+        let rooms = SummaryRoomBox()
+        let publisher = CallSummaryPublisher(me: ChatUser(userId: "me", username: "@me"), api: api, rtcUrl: URL(string: "wss://x")!, makeRoom: {
+            let room = FakeCallRoom()
+            rooms.rooms.append(room)
+            return room
+        }, now: { Date(timeIntervalSince1970: 2_000) })
+
+        await publisher.publish(CallSummaryReport(isGroup: false, roomId: "room", durationSeconds: 125, startedAt: Date(timeIntervalSince1970: 1_875)))
+
+        let sent = try #require(await api.sent.first)
+        #expect(sent.message == "__P2P_CALL_SUMMARY__:125|1875000")
+        #expect(sent.callInfo)
+        let room = try #require(rooms.rooms.first)
+        #expect(room.token == "text-token-room")
+        #expect(room.sentPackets.first?.type == "chat")
+        #expect(room.isDisconnected)
+        #expect(CallSummary(text: sent.message)?.durationSeconds == 125)
+        #expect(CallSummary.messageText(isGroup: true, durationSeconds: 0, startedAt: Date(timeIntervalSince1970: 0)) == "GROUP_CALL_SUMMARY:1|1")
+    }
+}
+
+@MainActor
+final class SummaryRoomBox {
+    var rooms: [FakeCallRoom] = []
 }

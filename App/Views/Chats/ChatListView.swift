@@ -1,5 +1,7 @@
+import ConnectCalls
 import ConnectChat
 import ConnectCore
+import ConnectFeatures
 import SwiftUI
 
 /// Вкладка «Чаты» или «Группы»: список с превью, временем и непрочитанными.
@@ -124,6 +126,10 @@ struct GroupTools {
     /// Звонок в группу: участники группы вызываются все сразу.
     var startCall: (@MainActor (_ groupId: String, _ title: String, _ memberUserIds: [String]) async -> Void)?
     var canCall: @MainActor () -> Bool = { true }
+    /// Идущий звонок группы для баннера и вход в него.
+    var activeCall: (@MainActor (_ groupId: String) async -> GroupCallRecord?)?
+    var joinCall: (@MainActor (_ record: GroupCallRecord, _ title: String) async -> Void)?
+    var directory: UserDirectory?
 }
 
 private struct ChatRow: View {
@@ -132,7 +138,7 @@ private struct ChatRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Avatar(name: chat.title)
+            Avatar(name: chat.title, imageKey: chat.avatarKey)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {

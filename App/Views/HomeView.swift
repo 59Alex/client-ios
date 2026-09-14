@@ -45,17 +45,21 @@ struct HomeView: View {
                     await groupCalls.start(groupChatId: groupId, name: title, memberUserIds: members)
                 }
             },
-            canCall: { !calls.isInCall && !groupCalls.isInCall && !voice.isInCall }
+            canCall: { !calls.isInCall && !groupCalls.isInCall && !voice.isInCall },
+            activeCall: { groupId in
+                guard !groupCalls.isInCall else { return nil }
+                return try? await dependencies.groupCallAPI.activeCall(groupChatId: groupId)
+            },
+            joinCall: { record, title in
+                await groupCalls.join(callId: record.id, groupChatId: record.groupChatId, title: title)
+            },
+            directory: dependencies.directory
         )
     }
 
-    /// Имена для плиток группового звонка: контакты и участники открытой группы.
+    /// Имена для плиток группового звонка из справочника пользователей.
     private var callNames: [String: String] {
-        var names: [String: String] = [:]
-        if case let .loaded(list) = dependencies.contacts.state {
-            for contact in list { names[contact.userId] = contact.displayName }
-        }
-        return names
+        dependencies.directory.cards.mapValues(\.displayName)
     }
 
     var body: some View {
@@ -81,6 +85,7 @@ struct HomeView: View {
                     },
                     origin: dependencies.uiOrigin,
                     voice: dependencies.roomVoice,
+                    directory: dependencies.directory,
                     canJoinVoice: { !calls.isInCall && !dependencies.groupCalls.isInCall },
                     path: $navigation.roomsPath
                 )
@@ -155,6 +160,9 @@ struct HomeView: View {
             let calls = calls
             calls.isBusyElsewhere = { groupCalls.isInCall || voice.isInCall }
             groupCalls.isBusyElsewhere = { calls.isInCall || voice.isInCall }
+            let summaries = dependencies.summaries
+            calls.onCallSummary = { await summaries.publish($0) }
+            groupCalls.onCallSummary = { await summaries.publish($0) }
         }
         .task { await dependencies.status.keepAlive(userId: dependencies.user.userId) }
         .task { await calls.runIncomingCalls() }
@@ -162,6 +170,12 @@ struct HomeView: View {
         .task { await dependencies.unread.run() }
         .task { await dependencies.invitations.load() }
         .task { await dependencies.contacts.load() }
+        .task(id: dependencies.contacts.state) {
+            if case let .loaded(list) = dependencies.contacts.state { dependencies.directory.remember(list) }
+        }
+        .task(id: dependencies.groupCalls.participants.map(\.userId) + dependencies.groupCalls.pendingUserIds + dependencies.groupCalls.declinedUserIds) {
+            await dependencies.directory.load(dependencies.groupCalls.participants.map(\.userId) + dependencies.groupCalls.pendingUserIds + dependencies.groupCalls.declinedUserIds)
+        }
         .task(id: dependencies.unread.eventRevision) {
             guard dependencies.unread.eventRevision > 0 else { return }
             await dependencies.invitations.load()

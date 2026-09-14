@@ -242,6 +242,13 @@ public struct CallSummary: Sendable, Equatable {
             .map { Date(timeIntervalSince1970: $0 / 1000) }
     }
 
+    /// Текст сообщения-итога, как его отправляют веб-клиенты.
+    public static func messageText(isGroup: Bool, durationSeconds: Int, startedAt: Date) -> String {
+        let seconds = max(1, durationSeconds)
+        let started = max(1, Int64(startedAt.timeIntervalSince1970 * 1000))
+        return (isGroup ? "GROUP_CALL_SUMMARY:" : "__P2P_CALL_SUMMARY__:") + "\(seconds)|\(started)"
+    }
+
     /// `m:ss` или `h:mm:ss`.
     public var durationText: String {
         let hours = durationSeconds / 3600
