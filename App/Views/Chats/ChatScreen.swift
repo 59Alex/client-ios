@@ -60,7 +60,7 @@ struct ChatScreen: View {
                 inputBar
             }
         }
-        .background(Palette.chat)
+        .background { ChatBackdrop() }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Palette.chrome, for: .navigationBar)

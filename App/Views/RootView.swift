@@ -34,6 +34,7 @@ struct RootView: View {
         .tint(Palette.accent)
         .preferredColorScheme(Palette.colorScheme)
         .task { await session.run() }
+        .task { await AppTheme.backgrounds.load() }
     }
 }
 

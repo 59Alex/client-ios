@@ -93,6 +93,10 @@ struct AppearanceSettingsView: View {
                     }
                 }
 
+                group("Фон чата · Телефон") {
+                    BackgroundGallery(model: model, backgrounds: AppTheme.backgrounds)
+                }
+
                 Toggle(isOn: Binding(get: { model.draft.reducedMotion }, set: { value in
                     var next = model.draft
                     next.reducedMotion = value
@@ -162,6 +166,87 @@ struct AppearanceSettingsView: View {
         .frame(minHeight: 48)
         .background(Palette.canvas, in: RoundedRectangle(cornerRadius: Radius.button))
         .accessibilityIdentifier(identifier)
+    }
+}
+
+/// Фоны галереи темы из connect-s3 и однотонный вариант (`appearance-patterns`).
+private struct BackgroundGallery: View {
+    let model: AppearanceModel
+    let backgrounds: ChatBackgroundsModel
+
+    private let columns = [GridItem(.adaptive(minimum: 96), spacing: 10)]
+
+    var body: some View {
+        let selected = backgrounds.background(for: model.draft)?.id ?? "plain"
+        LazyVGrid(columns: columns, spacing: 10) {
+            tile(id: "plain", title: "Однотонный", isSelected: selected == "plain") {
+                Palette.chat
+            }
+            ForEach(backgrounds.gallery(for: model.draft.theme)) { background in
+                tile(id: background.id, title: background.name, isSelected: selected == background.id) {
+                    BackgroundThumbnail(url: backgrounds.imageURL(for: background), focus: background.focus)
+                }
+            }
+        }
+        if backgrounds.failed {
+            Button("Не удалось загрузить фоны. Повторить") { Task { await backgrounds.load() } }
+                .font(.footnote)
+                .accessibilityIdentifier("appearance.backgrounds.retry")
+        }
+    }
+
+    private func tile<Preview: View>(id: String, title: String, isSelected: Bool, @ViewBuilder preview: () -> Preview) -> some View {
+        Button {
+            model.selectBackground(id)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                preview()
+                    .frame(height: 120)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(isSelected ? Palette.accent : Palette.divider, lineWidth: isSelected ? 3 : 1)
+                    }
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Palette.textPrimary)
+                    .lineLimit(1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Фон \(title)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("appearance.background.\(id)")
+    }
+}
+
+private struct BackgroundThumbnail: View {
+    let url: URL?
+    let focus: (x: Double, y: Double)
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                Palette.chat
+                if let image {
+                    let frame = ChatBackdrop.cover(image.size, in: proxy.size, focus: focus)
+                    Image(uiImage: image)
+                        .resizable()
+                        .frame(width: frame.width, height: frame.height)
+                        .offset(x: frame.minX, y: frame.minY)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .task(id: url) {
+            guard let url, let (data, _) = try? await URLSession.shared.data(from: url) else { return }
+            image = UIImage(data: data)
+        }
     }
 }
 
@@ -257,7 +342,7 @@ private struct AppearancePreview: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity)
-            .background(Palette.chat)
+            .background { ChatBackdrop() }
 
             HStack {
                 Text("Написать сообщение…").foregroundStyle(Palette.textSecondary)

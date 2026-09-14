@@ -50,6 +50,7 @@ final class AppDependencies {
         var appearance: (any AppearanceAPI)?
         var appearanceStore: (any AppearanceStore)?
         var presence: (any PresenceAPI)?
+        var backgrounds: (any BackgroundsAPI)?
     }
 
     init(
@@ -77,7 +78,7 @@ final class AppDependencies {
             api: overrides.appearance ?? RemoteAppearanceAPI(settings: settingsClient),
             store: overrides.appearanceStore ?? DeviceAppearanceStore()
         )
-        AppTheme.use(appearance)
+        AppTheme.use(appearance, backgrounds: ChatBackgroundsModel(api: overrides.backgrounds ?? RemoteBackgroundsAPI(s3: s3Client)))
     }
 
     /// Зависимости экранов вошедшего пользователя; живут, пока он не выйдет.
@@ -184,7 +185,8 @@ final class AppDependencies {
                     roomVoice: FakeRoomVoiceAPI(connected: [ChannelParticipantEvent(userId: "qa-2", channelId: "channel-voice", muted: true, kind: .connect)]),
                     appearance: FakeAppearanceAPI(preferences: UITestStub.appearance(arguments: arguments)),
                     appearanceStore: MemoryAppearanceStore(UITestStub.appearance(arguments: arguments)),
-                    presence: FakePresenceAPI(snapshot: [PresenceUpdate(userId: "qa-2", status: .online)])
+                    presence: FakePresenceAPI(snapshot: [PresenceUpdate(userId: "qa-2", status: .online)]),
+                    backgrounds: FakeBackgroundsAPI()
                 )
             )
         }
