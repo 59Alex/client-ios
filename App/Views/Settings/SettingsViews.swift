@@ -212,6 +212,10 @@ struct VoiceSettingsView: View {
         .scrollContentBackground(.hidden)
         .background(Palette.canvas)
         .navigationTitle("Голос и видео")
+        .onChange(of: model.settings) { _, settings in
+            // Новые настройки действуют со следующего подключения микрофона.
+            AudioProcessing.apply(settings)
+        }
         .task {
             await model.load()
             if let settings = model.settings {

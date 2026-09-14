@@ -177,6 +177,10 @@ struct HomeView: View {
         .task { await dependencies.contacts.load() }
         .task { await dependencies.rooms.load() }
         .task { await dependencies.toasts.refresh() }
+        .task {
+            // Шумо- и эхоподавление этого устройства применяются к микрофону звонков.
+            AudioProcessing.apply(try? await dependencies.settings.voiceSettings(userId: dependencies.user.userId, deviceId: dependencies.deviceId))
+        }
         .modifier(ConnectionTracking(dependencies: dependencies, isShown: $isConnectionErrorsShown))
         .task(id: dependencies.contacts.presenceUserIds) {
             await dependencies.contacts.watchPresence(api: dependencies.presence)
