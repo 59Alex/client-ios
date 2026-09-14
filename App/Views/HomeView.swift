@@ -5,6 +5,7 @@ import ConnectFeatures
 import ConnectFiles
 import ConnectInbox
 import ConnectRooms
+import ConnectSettings
 import PhotosUI
 import SwiftUI
 
@@ -74,6 +75,9 @@ struct HomeView: View {
                     .tag(AppNavigation.Tab.contacts)
             }
             .environment(\.mediaLoader, dependencies.mediaLoader)
+            .environment(\.greetingLookup, { [settings = dependencies.settings] userId in
+                try? await settings.greeting(userId: userId)
+            })
             .sheet(isPresented: $isInboxShown) {
                 InboxView(notifications: dependencies.notifications, invitations: dependencies.invitations) { route in
                     Task {
@@ -182,6 +186,28 @@ private struct ProfileView: View {
                 }
                 .listRowBackground(Palette.surface)
 
+                Section("Настройки") {
+                    NavigationLink("Аккаунт") {
+                        AccountSettingsView(model: AccountSettingsModel(userId: user.userId, api: dependencies.settings))
+                    }
+                    .accessibilityIdentifier("settings.account")
+                    NavigationLink("Уведомления") {
+                        NotificationSoundsView(model: NotificationSoundsModel(userId: user.userId, api: dependencies.settings))
+                    }
+                    .accessibilityIdentifier("settings.sounds")
+                    NavigationLink("Голос и видео") {
+                        VoiceSettingsView(model: VoiceSettingsModel(userId: user.userId, deviceId: dependencies.deviceId, api: dependencies.settings))
+                    }
+                    .accessibilityIdentifier("settings.voice")
+                    NavigationLink("Приветственный стикер") {
+                        GreetingSettingsView(model: GreetingModel(userId: user.userId, api: dependencies.settings)) { data, filename, mime in
+                            try await dependencies.files.upload(data: data, filename: filename, mimeType: mime, bucket: .userGallery, key: user.userId, userId: user.userId, username: user.username).urlS3
+                        }
+                    }
+                    .accessibilityIdentifier("settings.greeting")
+                }
+                .listRowBackground(Palette.surface)
+
                 if let gallery = card?.photoKeys, gallery.count > 1 {
                     Section("Фото") {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -207,7 +233,7 @@ private struct ProfileView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Palette.canvas)
-            .navigationTitle("Профиль")
+            .navigationTitle("Профиль и настройки")
         }
         .task { card = try? await dependencies.users.card(userId: user.userId) }
         .onChange(of: avatarItem) { _, item in

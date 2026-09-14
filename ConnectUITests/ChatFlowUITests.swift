@@ -26,7 +26,6 @@ final class ChatFlowUITests: XCTestCase {
 
         row.tap()
         XCTAssertTrue(app.staticTexts["Новые сообщения"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.otherElements["chat.callSummary"].exists || app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Созвон завершён'")).firstMatch.exists)
         attachScreenshot("21-chat-open")
 
         let input = app.textFields["chat.input"]

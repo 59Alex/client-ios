@@ -38,6 +38,8 @@ public final class ChatModel {
     public private(set) var isConnected = false
     public private(set) var isPartnerBanned = false
     public private(set) var members: [Contact] = []
+    /// Собеседник личного чата: для приветственного стикера.
+    public private(set) var partnerUserId: String?
     /// Граница «Новые сообщения», зафиксированная при открытии.
     public private(set) var firstUnreadMessageId: String?
     public var draft = ""
@@ -142,6 +144,7 @@ public final class ChatModel {
         }
         isPartnerBanned = snapshot.partnerBanned || snapshot.banned
         members = snapshot.members
+        partnerUserId = snapshot.partnerUserId
         if let name = snapshot.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
             title = name
         }
@@ -254,6 +257,22 @@ public final class ChatModel {
         }
     }
 
+    /// Приветствие в пустом личном чате: картинка каждый раз загружается в свою галерею
+    /// и уходит сообщением без текста (`ChatGreeting.tsx`).
+    public func sendGreeting(data: Data, filename: String, mimeType: String) async -> Bool {
+        guard let files, kind == .p2p, messages.isEmpty, !isPartnerBanned else { return false }
+        do {
+            let uploaded = try await files.upload(data: data, filename: filename, mimeType: mimeType, bucket: .userGallery, key: me.userId, userId: me.userId, username: me.username)
+            let attachment = ChatAttachment(urlS3: uploaded.urlS3, name: uploaded.name, extension: uploaded.extension)
+            pendingAttachments = [PendingAttachment(filename: filename, state: .uploaded(attachment))]
+            draft = ""
+            await send()
+            return messages.first?.delivery == .sent
+        } catch {
+            return false
+        }
+    }
+
     public func removeAttachment(_ id: UUID) async {
         guard let index = pendingAttachments.firstIndex(where: { $0.id == id }) else { return }
         let removed = pendingAttachments.remove(at: index)
@@ -352,7 +371,8 @@ public struct PendingAttachment: Identifiable, Sendable, Equatable {
     public var filename: String
     public var state: State = .uploading
 
-    public init(filename: String) {
+    public init(filename: String, state: State = .uploading) {
         self.filename = filename
+        self.state = state
     }
 }

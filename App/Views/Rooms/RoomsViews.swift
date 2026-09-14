@@ -221,6 +221,14 @@ private struct RoomCalendarSheet: View {
     @State var model: RoomCalendarModel
     let canCreate: Bool
 
+    /// Неделя с понедельника, как сетка календаря веб-клиента.
+    static var mondayCalendar: Calendar {
+        var calendar = Calendar.current
+        calendar.locale = Locale(identifier: "ru_RU")
+        calendar.firstWeekday = 2
+        return calendar
+    }
+
     @Environment(\.dismiss) private var dismiss
     @State private var selectedDay = Date()
     @State private var isCreateShown = false
@@ -231,6 +239,7 @@ private struct RoomCalendarSheet: View {
                 DatePicker("Дата", selection: $selectedDay, displayedComponents: .date)
                     .datePickerStyle(.graphical)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
+                    .environment(\.calendar, Self.mondayCalendar)
                     .listRowBackground(Palette.surface)
                 Section(selectedDay.formatted(.dateTime.day().month(.wide).locale(Locale(identifier: "ru_RU")))) {
                     let events = model.events(on: selectedDay)

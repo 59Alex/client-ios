@@ -52,6 +52,7 @@ targets:
           - ConnectFiles
           - ConnectInbox
           - ConnectRooms
+          - ConnectSettings
           - ConnectTestSupport
       - package: LiveKit
     settings:

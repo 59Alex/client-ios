@@ -6,6 +6,7 @@ import ConnectFeatures
 import ConnectFiles
 import ConnectInbox
 import ConnectRooms
+import ConnectSettings
 import ConnectNetworking
 import Foundation
 #if DEBUG
@@ -25,6 +26,8 @@ final class AppDependencies {
     private let statusClient: HTTPClient
     private let notificationClient: HTTPClient
     private let s3Client: HTTPClient
+    private let settingsClient: HTTPClient
+    private let usersClient: HTTPClient
     private let eventStream: any EventStreamTransport
     private let overrides: Overrides
 
@@ -37,6 +40,7 @@ final class AppDependencies {
         var contacts: (any ContactsRepository)?
         var inbox: (any InboxAPI)?
         var rooms: (any RoomsAPI)?
+        var settings: (any SettingsAPI)?
     }
 
     init(
@@ -57,6 +61,8 @@ final class AppDependencies {
         statusClient = HTTPClient(baseURL: config.statusApiUrl, transport: transport, tokenProvider: auth, timeout: 8)
         notificationClient = HTTPClient(baseURL: config.notificationApiUrl, transport: transport, tokenProvider: auth)
         s3Client = HTTPClient(baseURL: config.s3ApiUrl, transport: transport, tokenProvider: auth, timeout: 60)
+        settingsClient = HTTPClient(baseURL: config.settingsApiUrl, transport: transport, tokenProvider: auth, timeout: 10)
+        usersClient = HTTPClient(baseURL: config.userApiUrl, transport: transport, tokenProvider: auth)
         session = SessionModel(auth: auth, users: RemoteUserRepository(client: mainClient))
     }
 
@@ -78,6 +84,7 @@ final class AppDependencies {
         let chatUser = ChatUser(userId: user.userId, username: user.username)
         let inbox = overrides.inbox ?? RemoteInboxAPI(main: mainClient, notifications: notificationClient)
         let roomsAPI = overrides.rooms ?? RemoteRoomsAPI(main: mainClient)
+        let settingsAPI = overrides.settings ?? RemoteSettingsAPI(settings: settingsClient, users: usersClient, main: mainClient)
         let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client)
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("connect-media", isDirectory: true)
@@ -97,6 +104,8 @@ final class AppDependencies {
             rooms: RoomsModel(me: user.userId, api: roomsAPI),
             feeds: FeedsModel(me: user.userId, api: roomsAPI),
             uiOrigin: config.uiOrigin,
+            settings: settingsAPI,
+            deviceId: Self.deviceId(),
             makeRoom: { RoomModel(roomId: $0, me: user.userId, api: roomsAPI) },
             makeCalendar: { RoomCalendarModel(roomId: $0, api: roomsAPI) },
             makeFeed: { FeedModel(feedId: $0, me: chatUser, api: roomsAPI) },
@@ -118,6 +127,14 @@ final class AppDependencies {
         )
     }
 
+    /// Идентификатор устройства для настроек голоса: строчный UUID, живёт до удаления приложения.
+    static func deviceId(defaults: UserDefaults = .standard) -> String {
+        if let stored = defaults.string(forKey: "deviceId"), !stored.isEmpty { return stored }
+        let created = UUID().uuidString.lowercased()
+        defaults.set(created, forKey: "deviceId")
+        return created
+    }
+
     static func makeForLaunch(arguments: [String] = ProcessInfo.processInfo.arguments) -> AppDependencies {
         #if DEBUG
         if arguments.contains(UITestStub.launchArgument) {
@@ -133,7 +150,8 @@ final class AppDependencies {
                     fileAPI: UITestStub.makeFileAPI(),
                     contacts: UITestStub.makeContactsRepository(),
                     inbox: UITestStub.makeInboxAPI(),
-                    rooms: UITestStub.makeRoomsAPI()
+                    rooms: UITestStub.makeRoomsAPI(),
+                    settings: FakeSettingsAPI(userId: "qa-1", name: "QA Wallpaper", username: "@qa_wallpaper_1", email: "qa@example.com", takenUsernames: ["@qa_wallpaper_2"], sticker: GreetingSticker(urlS3: "user-gallery/qa-3/greeting.png", extension: ".png"))
                 )
             )
         }
@@ -163,6 +181,8 @@ final class SignedInDependencies {
     let rooms: RoomsModel
     let feeds: FeedsModel
     let uiOrigin: URL
+    let settings: any SettingsAPI
+    let deviceId: String
     let makeRoom: @MainActor (String) -> RoomModel
     let makeCalendar: @MainActor (String) -> RoomCalendarModel
     let makeFeed: @MainActor (String) -> FeedModel
@@ -185,6 +205,8 @@ final class SignedInDependencies {
         rooms: RoomsModel,
         feeds: FeedsModel,
         uiOrigin: URL,
+        settings: any SettingsAPI,
+        deviceId: String,
         makeRoom: @escaping @MainActor (String) -> RoomModel,
         makeCalendar: @escaping @MainActor (String) -> RoomCalendarModel,
         makeFeed: @escaping @MainActor (String) -> FeedModel,
@@ -206,6 +228,8 @@ final class SignedInDependencies {
         self.rooms = rooms
         self.feeds = feeds
         self.uiOrigin = uiOrigin
+        self.settings = settings
+        self.deviceId = deviceId
         self.makeRoom = makeRoom
         self.makeCalendar = makeCalendar
         self.makeFeed = makeFeed

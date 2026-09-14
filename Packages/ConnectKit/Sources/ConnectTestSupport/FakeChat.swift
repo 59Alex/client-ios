@@ -41,7 +41,8 @@ public actor FakeChatAPI: ChatAPI {
     }
 
     public func snapshot(_ kind: ChatKind, roomId: String) async throws -> ChatSnapshot {
-        ChatSnapshot(id: roomId, messages: page(roomId: roomId, number: 0))
+        let partner = kind == .p2p ? roomsByKind[.p2p]?.first(where: { $0.roomId == roomId })?.partnerUserId : nil
+        return ChatSnapshot(id: roomId, partnerUserId: partner, messages: page(roomId: roomId, number: 0))
     }
 
     public func history(_ kind: ChatKind, roomId: String, page number: Int) async throws -> MessagePage {
