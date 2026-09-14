@@ -155,7 +155,7 @@ public actor FakeRoomsAPI: RoomsAPI {
 
     public func createComment(postId: String, userId: String, text: String, timestamp: Int64) async throws -> PostComment {
         counter += 1
-        let comment = PostComment(id: "comment-\(counter)", postId: postId, text: text, createdAtMilliseconds: timestamp, userId: userId, username: userId)
+        let comment = PostComment(id: "comment-new-\(counter)", postId: postId, text: text, createdAtMilliseconds: timestamp, userId: userId, username: userId)
         commentsByPost[postId, default: []].append(comment)
         return comment
     }

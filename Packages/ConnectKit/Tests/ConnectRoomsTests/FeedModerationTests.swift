@@ -120,7 +120,7 @@ struct FeedModerationTests {
         model.draft = "  мой  "
         await model.send()
         #expect(model.comments.last?.text == "мой")
-        #expect(model.comments.last?.id.hasPrefix("comment-") == true)
+        #expect(model.comments.last?.id.hasPrefix("comment-new-") == true)
         #expect(model.draft.isEmpty)
 
         await model.delete(model.comments[0])
