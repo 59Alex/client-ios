@@ -466,7 +466,17 @@ private struct PendingAttachmentChip: View {
         HStack(spacing: 6) {
             switch attachment.state {
             case .uploading:
-                ProgressView().controlSize(.small)
+                if let progress = attachment.progress {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                    Text("\(Int((progress * 100).rounded()))%")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(Palette.textSecondary)
+                        .accessibilityIdentifier("chat.pending.progress")
+                } else {
+                    ProgressView().controlSize(.small)
+                }
             case .uploaded:
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Palette.accent)
             case .failed:

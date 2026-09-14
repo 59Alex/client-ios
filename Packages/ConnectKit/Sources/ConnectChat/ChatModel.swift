@@ -243,8 +243,9 @@ public final class ChatModel {
         guard let files else { return }
         let pending = PendingAttachment(filename: filename)
         pendingAttachments.append(pending)
+        startUploadProgress()
         do {
-            let uploaded = try await files.upload(data: data, filename: filename, mimeType: mimeType, bucket: .chat, key: roomId, userId: me.userId, username: me.username)
+            let uploaded = try await files.upload(data: data, filename: filename, mimeType: mimeType, bucket: .chat, key: roomId, userId: me.userId, username: me.username, fileId: pending.fileId)
             let attachment = ChatAttachment(urlS3: uploaded.urlS3, previewUrlS3: uploaded.previewUrlS3, name: uploaded.name, extension: uploaded.extension)
             guard pendingAttachments.contains(where: { $0.id == pending.id }) else {
                 // Файл убрали, пока он загружался.
@@ -284,6 +285,38 @@ public final class ChatModel {
     private func setAttachmentState(_ id: UUID, _ state: PendingAttachment.State) {
         guard let index = pendingAttachments.firstIndex(where: { $0.id == id }) else { return }
         pendingAttachments[index].state = state
+        if case .uploaded = state { pendingAttachments[index].progress = 1 }
+        if !pendingAttachments.contains(where: { $0.state == .uploading }) {
+            progressTask?.cancel()
+            progressTask = nil
+        }
+    }
+
+    private var progressTask: Task<Void, Never>?
+
+    /// Проценты из потока connect-s3, пока идут загрузки. До ответа на загрузку не больше 99%, назад не откатываются.
+    private func startUploadProgress() {
+        guard progressTask == nil, let files else { return }
+        let userId = me.userId
+        progressTask = Task { [weak self] in
+            do {
+                for try await event in files.uploadProgress(userId: userId) {
+                    self?.applyProgress(event)
+                }
+            } catch {
+                // Без потока остаётся неопределённый индикатор.
+            }
+        }
+    }
+
+    func applyProgress(_ event: UploadProgress) {
+        guard let percent = event.progressPercent,
+              let index = pendingAttachments.firstIndex(where: { $0.fileId == event.fileId && $0.state == .uploading })
+        else { return }
+        let value = min(0.99, max(0, percent / 100))
+        if value > (pendingAttachments[index].progress ?? 0) {
+            pendingAttachments[index].progress = value
+        }
     }
 
     public func send() async {
@@ -460,8 +493,12 @@ public struct PendingAttachment: Identifiable, Sendable, Equatable {
     }
 
     public let id = UUID()
+    /// `meta.id` загрузки: по нему приходят проценты.
+    public let fileId = UUID().uuidString.lowercased()
     public var filename: String
     public var state: State = .uploading
+    /// Доля загрузки 0…1; `nil`, пока сервис не прислал процентов.
+    public var progress: Double?
 
     public init(filename: String, state: State = .uploading) {
         self.filename = filename

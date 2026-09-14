@@ -1,5 +1,8 @@
 import ConnectNetworking
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Загруженный в connect-s3 файл: `name` без расширения, `extension` с точкой в нижнем регистре.
 public struct UploadedFile: Sendable, Equatable {
@@ -32,17 +35,71 @@ public enum FileBucket: String, Sendable {
 
 public protocol FileAPI: Sendable {
     func download(urls: [String]) async throws -> [String: DownloadedFile]
-    func upload(data: Data, filename: String, mimeType: String, bucket: FileBucket, key: String, userId: String, username: String) async throws -> UploadedFile
+    /// `fileId` уходит в `meta.id`: по нему сервис присылает проценты загрузки.
+    func upload(data: Data, filename: String, mimeType: String, bucket: FileBucket, key: String, userId: String, username: String, fileId: String) async throws -> UploadedFile
     func delete(urls: [String]) async throws
+    /// Проценты загрузки файлов пользователя: SSE `GET /api/event/events?userId=&access_token=`.
+    func uploadProgress(userId: String) -> AsyncThrowingStream<UploadProgress, any Error>
+}
+
+public extension FileAPI {
+    func upload(data: Data, filename: String, mimeType: String, bucket: FileBucket, key: String, userId: String, username: String) async throws -> UploadedFile {
+        try await upload(data: data, filename: filename, mimeType: mimeType, bucket: bucket, key: key, userId: userId, username: username, fileId: UUID().uuidString.lowercased())
+    }
+}
+
+/// Событие загрузки файла (`FileUploadProgressEvent` connect-s3).
+public struct UploadProgress: Decodable, Sendable, Equatable {
+    public let fileId: String
+    public let progressPercent: Double?
+    public let processingStatus: String?
+    public let errorCode: String?
+
+    public init(fileId: String, progressPercent: Double?, processingStatus: String? = nil, errorCode: String? = nil) {
+        self.fileId = fileId
+        self.progressPercent = progressPercent
+        self.processingStatus = processingStatus
+        self.errorCode = errorCode
+    }
+
+    public static func decode(_ data: String) -> UploadProgress? {
+        try? JSONDecoder().decode(UploadProgress.self, from: Data(data.utf8))
+    }
 }
 
 public struct RemoteFileAPI: FileAPI {
     public static let batchSize = 100
 
     private let client: HTTPClient
+    private let eventStream: (any EventStreamTransport)?
 
-    public init(client: HTTPClient) {
+    public init(client: HTTPClient, eventStream: (any EventStreamTransport)? = nil) {
         self.client = client
+        self.eventStream = eventStream
+    }
+
+    public func uploadProgress(userId: String) -> AsyncThrowingStream<UploadProgress, any Error> {
+        let client = client
+        let transport = eventStream
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard let transport else { return continuation.finish() }
+                    guard let token = await client.accessToken() else { throw APIError.unauthorized }
+                    // EventSource веба не умеет заголовки: сервис принимает токен параметром.
+                    var components = URLComponents(url: HTTPClient.join(client.baseURL, "/api/event/events"), resolvingAgainstBaseURL: false)
+                    components?.queryItems = [URLQueryItem(name: "userId", value: userId), URLQueryItem(name: "access_token", value: token)]
+                    guard let url = components?.url else { throw APIError.invalidResponse }
+                    for try await event in transport.events(for: URLRequest(url: url)) {
+                        if let progress = UploadProgress.decode(event.data) { continuation.yield(progress) }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     public func download(urls: [String]) async throws -> [String: DownloadedFile] {
@@ -62,8 +119,8 @@ public struct RemoteFileAPI: FileAPI {
         return result
     }
 
-    public func upload(data: Data, filename: String, mimeType: String, bucket: FileBucket, key: String, userId: String, username: String) async throws -> UploadedFile {
-        let meta = UploadMeta(bucket: bucket.rawValue, key: key, userId: userId, username: username, id: UUID().uuidString.lowercased())
+    public func upload(data: Data, filename: String, mimeType: String, bucket: FileBucket, key: String, userId: String, username: String, fileId: String) async throws -> UploadedFile {
+        let meta = UploadMeta(bucket: bucket.rawValue, key: key, userId: userId, username: username, id: fileId)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
         var form = MultipartFormBody()

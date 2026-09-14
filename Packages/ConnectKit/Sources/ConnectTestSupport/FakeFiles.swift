@@ -28,7 +28,39 @@ public actor FakeFileAPI: FileAPI {
         return result
     }
 
-    public func upload(data: Data, filename: String, mimeType: String, bucket: FileBucket, key: String, userId: String, username: String) async throws -> UploadedFile {
+    /// Загрузка ждёт `finishUpload`, если включено: так видны промежуточные проценты.
+    public var holdUploads = false
+    public private(set) var uploadFileIds: [String] = []
+    private var heldUploads: [String: CheckedContinuation<Void, Never>] = [:]
+    private var progressContinuations: [AsyncThrowingStream<UploadProgress, any Error>.Continuation] = []
+
+    public func setHoldUploads(_ value: Bool) { holdUploads = value }
+
+    public func pushProgress(_ progress: UploadProgress) {
+        progressContinuations.forEach { $0.yield(progress) }
+    }
+
+    public func hasProgressSubscriber() -> Bool { !progressContinuations.isEmpty }
+
+    public func finishUpload(_ fileId: String) {
+        heldUploads.removeValue(forKey: fileId)?.resume()
+    }
+
+    public nonisolated func uploadProgress(userId: String) -> AsyncThrowingStream<UploadProgress, any Error> {
+        let (stream, continuation) = AsyncThrowingStream<UploadProgress, any Error>.makeStream()
+        Task { await self.registerProgress(continuation) }
+        return stream
+    }
+
+    private func registerProgress(_ continuation: AsyncThrowingStream<UploadProgress, any Error>.Continuation) {
+        progressContinuations.append(continuation)
+    }
+
+    public func upload(data: Data, filename: String, mimeType: String, bucket: FileBucket, key: String, userId: String, username: String, fileId: String) async throws -> UploadedFile {
+        uploadFileIds.append(fileId)
+        if holdUploads {
+            await withCheckedContinuation { heldUploads[fileId] = $0 }
+        }
         if failUpload { throw URLError(.notConnectedToInternet) }
         counter += 1
         let parts = UploadedFile.split(filename: filename)

@@ -104,7 +104,7 @@ final class AppDependencies {
         let roomVoiceAPI = overrides.roomVoice ?? RemoteRoomVoiceAPI(main: mainClient, events: eventsClient, outbox: outboxClient, eventStream: eventStream)
         let callRoom: @MainActor () -> any CallRoom = overrides.makeCallRoom ?? { LiveKitCallRoom() }
         let usesStubRooms = overrides.makeCallRoom != nil
-        let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client)
+        let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client, eventStream: eventStream)
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("connect-media", isDirectory: true)
         let rtcUrl = config.rtcWebSocketUrl
