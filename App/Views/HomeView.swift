@@ -246,6 +246,11 @@ struct HomeView: View {
             .background(Palette.canvas.ignoresSafeArea(edges: .bottom))
         }
         .background(Palette.chrome.ignoresSafeArea())
+        .overlay(alignment: .topTrailing) {
+            LocalCameraPreview(camera: dependencies.roomVoice.camera)
+                .padding(.top, 56)
+                .padding(.trailing, 12)
+        }
         .animation(.easeOut(duration: 0.2), value: navigation.isDeep)
     }
 

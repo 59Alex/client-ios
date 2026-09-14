@@ -49,6 +49,9 @@ struct GroupCallView: View {
                 .padding(.bottom, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) {
+            LocalCameraPreview(camera: model.camera).padding(16)
+        }
         .background(Palette.canvas.ignoresSafeArea())
     }
 
@@ -95,7 +98,13 @@ struct GroupCallView: View {
         default:
             let muted = model.session?.isMuted ?? false
             let speakerOff = model.session?.isSpeakerOff ?? false
-            HStack(spacing: 32) {
+            HStack(spacing: 16) {
+                RoundControl(title: model.camera.isActive ? "Выключить камеру" : "Включить камеру", systemImage: model.camera.isActive ? "video.fill" : "video.slash.fill", fill: model.camera.isActive ? Palette.textPrimary : Palette.surface, foreground: model.camera.isActive ? Palette.canvas : Palette.textPrimary, identifier: "group.call.camera") {
+                    Task {
+                        if !model.camera.isActive { guard await CameraPermission.request() else { return } }
+                        await model.toggleCamera()
+                    }
+                }
                 RoundControl(title: muted ? "Включить микрофон" : "Выключить микрофон", systemImage: muted ? "mic.slash.fill" : "mic.fill", fill: muted ? Palette.textPrimary : Palette.surface, foreground: muted ? Palette.canvas : Palette.textPrimary, identifier: "group.call.mute") {
                     Task { await model.toggleMute() }
                 }

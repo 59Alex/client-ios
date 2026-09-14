@@ -84,6 +84,8 @@ public protocol RoomVoiceAPI: Sendable {
     func setMuted(_ muted: Bool, channelId: String, userId: String, sessionId: String?) async throws
     func setSpeakerOff(_ off: Bool, channelId: String, userId: String, sessionId: String?) async throws
     func leaveChannel(channelId: String, userId: String, sessionId: String?) async throws
+    /// Значок трансляции у участника канала: `PUT /api/roomparticipant/streamon`.
+    func setStreamOn(_ on: Bool, channelId: String, userId: String) async throws
     func connectedParticipants(channelIds: [String]) async throws -> [ChannelParticipantEvent]
     func participantEvents(channelIds: [String], subscriber: String) -> AsyncThrowingStream<ChannelParticipantEvent, any Error>
 }
@@ -118,6 +120,11 @@ public struct RemoteRoomVoiceAPI: RoomVoiceAPI {
     public func setSpeakerOff(_ off: Bool, channelId: String, userId: String, sessionId: String?) async throws {
         let body = ParticipantBody(channelId: channelId, userId: userId, speakerOff: off, sessionId: sessionId)
         try HTTPClient.requireSuccess(try await events.send(method: "PUT", path: "/api/roomparticipant/speakeroff", body: JSONEncoder().encode(body), headers: ["X-Idempotence-Id": body.idempotenceId]))
+    }
+
+    public func setStreamOn(_ on: Bool, channelId: String, userId: String) async throws {
+        let body = StreamOnBody(channelId: channelId, userId: userId, streamOn: on)
+        try HTTPClient.requireSuccess(try await events.send(method: "PUT", path: "/api/roomparticipant/streamon", body: JSONEncoder().encode(body), headers: ["X-Idempotence-Id": body.idempotenceId]))
     }
 
     public func leaveChannel(channelId: String, userId: String, sessionId: String?) async throws {
@@ -166,6 +173,14 @@ private struct ChannelTokenBody: Encodable, Sendable {
 
 private struct TokenBody: Decodable {
     let openviduConnectionUri: String
+}
+
+private struct StreamOnBody: Encodable, Sendable {
+    let channelId: String
+    let userId: String
+    let streamOn: Bool
+    var eventId = UUID().uuidString.lowercased()
+    var idempotenceId = UUID().uuidString.lowercased()
 }
 
 private struct ParticipantBody: Encodable, Sendable {
@@ -227,6 +242,29 @@ public final class RoomVoiceModel {
         self.makeRoom = makeRoom
         self.sessionId = sessionId
         self.requestMicrophone = requestMicrophone
+        camera = CameraShare(makeRoom: makeRoom, rtcUrl: rtcUrl)
+    }
+
+    /// Своя камера в голосовом канале: отдельное подключение, `streamon` и сигнал `publish_stream`.
+    public let camera: CameraShare
+
+    public func toggleCamera() async {
+        guard let channelId else { return }
+        let api = api
+        let me = me
+        if camera.isActive {
+            await camera.stop()
+            try? await api.setStreamOn(false, channelId: channelId, userId: me.userId)
+            return
+        }
+        guard let session else { return }
+        // Голосовой канал передаёт клиентские данные без обёртки `clientData`, как `useRoomVoiceSession.ts`.
+        let started = await camera.start(token: { try await api.token(userId: me.userId, channelId: channelId) }) { streamId in
+            CallClientData(userId: me.userId, username: me.username, sessionId: nil, streamType: "SHARE", streamId: streamId, shareType: RemoteShare.Kind.camera.rawValue).encodedFlat()
+        }
+        guard started, let streamId = camera.streamId else { return }
+        try? await api.setStreamOn(true, channelId: channelId, userId: me.userId)
+        await session.announceStream(streamId: streamId)
     }
 
     public var isInCall: Bool { phase != .idle }
@@ -332,6 +370,15 @@ public final class RoomVoiceModel {
 
     private func reset() {
         generation += 1
+        if camera.isActive, let channelId {
+            let camera = camera
+            let api = api
+            let userId = me.userId
+            Task {
+                await camera.stop()
+                try? await api.setStreamOn(false, channelId: channelId, userId: userId)
+            }
+        }
         roomEvents?.cancel()
         roomEvents = nil
         session = nil

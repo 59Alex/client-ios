@@ -12,6 +12,7 @@ final class LiveKitCallRoom: CallRoom {
     private let observer: RoomObserver
     private let room: Room
     private var microphone: LocalAudioTrack?
+    private var camera: LocalVideoTrack?
 
     init() {
         let (events, continuation) = AsyncStream<CallRoomEvent>.makeStream()
@@ -60,6 +61,23 @@ final class LiveKitCallRoom: CallRoom {
         AudioManager.shared.isSpeakerOutputPreferred = enabled
     }
 
+    /// Камера как у веба: 960×540 при 20 кадрах, дорожка с именем трансляции.
+    func publishCamera(trackName: String) async throws {
+        let options = CameraCaptureOptions(position: .front, dimensions: .h540_169, fps: 20)
+        let track = LocalVideoTrack.createCameraTrack(name: trackName, options: options)
+        _ = try await room.localParticipant.publish(videoTrack: track, options: VideoPublishOptions(name: trackName))
+        camera = track
+    }
+
+    func localCameraTrack() -> AnyObject? {
+        camera
+    }
+
+    func switchCamera() async throws {
+        guard let capturer = camera?.capturer as? CameraCapturer else { return }
+        _ = try await capturer.switchCameraPosition()
+    }
+
     func remoteVideoTrack(trackId: String) -> AnyObject? {
         for participant in room.remoteParticipants.values {
             if let publication = participant.trackPublications.values.first(where: { $0.sid.stringValue == trackId }) {
@@ -79,6 +97,7 @@ final class LiveKitCallRoom: CallRoom {
 
     func disconnect() async {
         microphone = nil
+        camera = nil
         await room.disconnect()
         continuation.finish()
     }

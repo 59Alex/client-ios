@@ -43,6 +43,19 @@ public final class FakeCallRoom: CallRoom {
         speakerOutput = enabled
     }
 
+    public private(set) var publishedCameraName: String?
+    public var failCamera = false
+
+    public func publishCamera(trackName: String) async throws {
+        if failCamera { throw URLError(.cannotConnectToHost) }
+        publishedCameraName = trackName
+    }
+
+    public func localCameraTrack() -> AnyObject? { publishedCameraName.map { $0 as NSString } }
+
+    public private(set) var cameraSwitches = 0
+    public func switchCamera() async throws { cameraSwitches += 1 }
+
     /// Видеодорожки для проверок отрисовки: по id отдаётся сама строка id.
     public private(set) var requestedVideoTracks: [String] = []
 

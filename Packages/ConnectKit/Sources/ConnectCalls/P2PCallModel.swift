@@ -76,6 +76,22 @@ public final class P2PCallModel {
     private var tracker = RemoteStreamTracker()
     /// Камера и экран собеседника.
     public private(set) var shares = RemoteShares()
+    /// Своя камера отдельным подключением к комнате звонка.
+    public let camera: CameraShare
+
+    /// Включает или выключает свою камеру; работает, пока открыта комната звонка.
+    public func toggleCamera() async {
+        if camera.isActive {
+            await camera.stop()
+            return
+        }
+        guard let roomId, room != nil else { return }
+        let api = api
+        let me = me
+        await camera.start(token: { try await api.connectionToken(userId: me.userId, roomId: roomId) }) { streamId in
+            CallClientData(userId: me.userId, username: me.username, sessionId: nil, streamType: "SHARE", streamId: streamId, shareType: RemoteShare.Kind.camera.rawValue).encoded()
+        }
+    }
 
     public func videoTrack(for share: RemoteShare) -> AnyObject? {
         room?.remoteVideoTrack(trackId: share.trackId)
@@ -109,6 +125,7 @@ public final class P2PCallModel {
         self.sessionId = sessionId
         self.requestMicrophone = requestMicrophone
         self.now = now
+        camera = CameraShare(makeRoom: makeRoom, rtcUrl: rtcUrl, now: now)
         self.sleep = sleep
     }
 
@@ -515,6 +532,7 @@ public final class P2PCallModel {
     }
 
     private func closeRoom() async {
+        await camera.stop()
         roomEvents?.cancel()
         roomEvents = nil
         let room = room

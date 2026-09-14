@@ -147,6 +147,14 @@ public final class VoiceRoomSession {
         await send(.speaking(userId: me, speaking: speaking))
     }
 
+    /// `publish_stream`: веб-участники узнают о новой трансляции и подписываются на неё.
+    public func announceStream(streamId: String) async {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.withoutEscapingSlashes, .sortedKeys]
+        let body = (try? encoder.encode(["streamId": streamId, "userId": me])).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
+        try? await room.send(SignalPacket(type: "publish_stream", data: body, client: clientData).encoded(), topic: CallProtocol.signalTopic)
+    }
+
     private func send(_ signal: CallSignal) async {
         try? await room.send(signal.packet(client: clientData).encoded(), topic: CallProtocol.signalTopic)
     }
