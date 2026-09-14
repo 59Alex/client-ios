@@ -63,6 +63,7 @@ struct HomeView: View {
     @State private var isJoinRoomShown = false
     @State private var myCard: Contact?
     @State private var didRestoreNavigation = false
+    @State private var isCallMinimized = false
     @State private var isConnectionErrorsShown = false
 
     private var tabItems: [HomeTabBar.Item] {
@@ -137,16 +138,35 @@ struct HomeView: View {
 
             // Слой, а не fullScreenCover: состояние звонка целиком в модели, закрывать экран жестом нельзя.
             if calls.isInCall {
-                CallView(model: calls)
-                    .transition(.opacity)
+                if isCallMinimized, calls.phase != .incoming {
+                    MinimizedCallBar(title: calls.peer.map { $0.name.isEmpty ? $0.username : $0.name } ?? "Звонок", phase: minimizedPhase(calls.phase), onExpand: { isCallMinimized = false }) {
+                        Task { await calls.hangUp() }
+                    }
                     .zIndex(1)
+                } else {
+                    CallView(model: calls, onMinimize: { isCallMinimized = true })
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
             } else if dependencies.groupCalls.isInCall {
-                GroupCallView(model: dependencies.groupCalls, names: callNames)
-                    .transition(.opacity)
+                if isCallMinimized, dependencies.groupCalls.phase != .incoming {
+                    MinimizedCallBar(title: dependencies.groupCalls.title.isEmpty ? "Групповой звонок" : dependencies.groupCalls.title, phase: minimizedPhase(dependencies.groupCalls.phase), onExpand: { isCallMinimized = false }) {
+                        Task { await dependencies.groupCalls.hangUp() }
+                    }
                     .zIndex(1)
+                } else {
+                    GroupCallView(model: dependencies.groupCalls, names: callNames, onMinimize: { isCallMinimized = true })
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: calls.isInCall)
+        .animation(.easeInOut(duration: 0.2), value: isCallMinimized)
+        .onChange(of: calls.isInCall || dependencies.groupCalls.isInCall) { _, inCall in
+            // Следующий звонок снова открывается на весь экран.
+            if !inCall { isCallMinimized = false }
+        }
         .animation(.easeInOut(duration: 0.2), value: dependencies.groupCalls.isInCall)
         .onAppear {
             if !didRestoreNavigation {
@@ -312,6 +332,16 @@ struct HomeView: View {
     private func chatTitle(_ list: ChatListModel, _ roomId: String) -> String? {
         guard case let .loaded(chats) = list.state else { return nil }
         return chats.first { $0.roomId == roomId }?.title
+    }
+
+    private func minimizedPhase(_ phase: P2PCallModel.Phase) -> MinimizedCallBar.Phase {
+        if case let .active(startedAt) = phase { return .active(startedAt) }
+        return .connecting
+    }
+
+    private func minimizedPhase(_ phase: GroupCallModel.Phase) -> MinimizedCallBar.Phase {
+        if case let .active(startedAt) = phase { return .active(startedAt) }
+        return .connecting
     }
 
     private func logout() async {

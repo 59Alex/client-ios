@@ -40,6 +40,14 @@ final class CallFlowUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Включить микрофон"].waitForExistence(timeout: 5))
         attachScreenshot("12-call-muted")
 
+        app.buttons["call.minimize"].tap()
+        let minimized = app.buttons["call.minimized.expand"]
+        XCTAssertTrue(minimized.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["home.tab.chats"].exists)
+        attachScreenshot("13-call-minimized")
+        minimized.tap()
+        XCTAssertTrue(app.buttons["call.hangup"].waitForExistence(timeout: 5))
+
         app.buttons["call.hangup"].tap()
         XCTAssertTrue(callButton.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["call.hangup"].exists)
