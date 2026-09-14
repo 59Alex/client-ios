@@ -75,7 +75,7 @@ struct ChatListView: View {
 }
 
 /// Адрес открытого чата в навигации.
-struct ChatRoute: Hashable {
+struct ChatRoute: Hashable, Codable {
     let kind: ChatKind
     let roomId: String
     let title: String

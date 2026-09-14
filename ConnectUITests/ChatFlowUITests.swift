@@ -85,6 +85,27 @@ final class ChatFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testRestoresLastOpenChatAfterRelaunch() throws {
+        let app = launchSignedIn()
+        app.buttons["home.tab.groups"].tap()
+        let group = app.buttons["chats.row.group-1"]
+        XCTAssertTrue(group.waitForExistence(timeout: 10))
+        group.tap()
+        XCTAssertTrue(app.textFields["chat.input"].waitForExistence(timeout: 10))
+        app.terminate()
+
+        let relaunched = XCUIApplication()
+        relaunched.launchArguments = ["-ui-test-stub", "-ui-test-signed-in", "-ui-test-keep-navigation"]
+        relaunched.launch()
+        XCTAssertTrue(relaunched.textFields["chat.input"].waitForExistence(timeout: 10))
+        XCTAssertTrue(relaunched.buttons["chat.members"].exists)
+        attachScreenshot("26-restored-group-chat")
+        relaunched.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(relaunched.buttons["home.tab.groups"].waitForExistence(timeout: 5))
+        XCTAssertTrue(relaunched.buttons["home.tab.groups"].isSelected)
+    }
+
+    @MainActor
     func testGroupsTabAndEmptyChat() throws {
         let app = launchSignedIn()
 

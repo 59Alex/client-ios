@@ -83,7 +83,7 @@ struct RoomsListView: View {
     }
 }
 
-enum RoomRoute: Hashable {
+enum RoomRoute: Hashable, Codable {
     case room(id: String, name: String)
     case channel(ChatRoute)
 }

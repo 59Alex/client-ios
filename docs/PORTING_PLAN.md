@@ -15,7 +15,7 @@
 | Сессия устройства: login, пульс | `status_api.ts`, `clientSession.ts` | 🟡 без heartbeat-SSE и ack, без unlogin при уходе в фон |
 | Идентификатор устройства (для настроек по устройству) | `internal/deviceIdentity.ts` | ✅ |
 | Панель ошибок подключения (медиасервер, VPN, микрофон) | `features/errors/*` | ⬜ |
-| Восстановление навигации | `features/navigation/lastLocation.ts` | ⬜ |
+| Восстановление навигации | `features/navigation/lastLocation.ts` | ✅ раздел, комната, открытые чаты и каналы, рейл; звонки не восстанавливаются |
 
 ## Этап 2. Аккаунт и контакты
 

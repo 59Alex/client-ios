@@ -62,6 +62,7 @@ struct HomeView: View {
     @State private var isCreateRoomShown = false
     @State private var isJoinRoomShown = false
     @State private var myCard: Contact?
+    @State private var didRestoreNavigation = false
 
     private var tabItems: [HomeTabBar.Item] {
         let unread = dependencies.unread
@@ -139,6 +140,12 @@ struct HomeView: View {
         .animation(.easeInOut(duration: 0.2), value: calls.isInCall)
         .animation(.easeInOut(duration: 0.2), value: dependencies.groupCalls.isInCall)
         .onAppear {
+            if !didRestoreNavigation {
+                didRestoreNavigation = true
+                if let saved = dependencies.navigationStore.load(userId: dependencies.user.userId) {
+                    navigation.restore(saved)
+                }
+            }
             let groupCalls = dependencies.groupCalls
             let voice = dependencies.roomVoice
             let calls = calls
@@ -147,6 +154,10 @@ struct HomeView: View {
             let summaries = dependencies.summaries
             calls.onCallSummary = { await summaries.publish($0) }
             groupCalls.onCallSummary = { await summaries.publish($0) }
+        }
+        .onChange(of: navigation.snapshot) { _, snapshot in
+            guard didRestoreNavigation else { return }
+            dependencies.navigationStore.save(snapshot, userId: dependencies.user.userId)
         }
         .task { await dependencies.appearance.start(deviceId: dependencies.deviceId) }
         .task { await dependencies.status.keepAlive(userId: dependencies.user.userId) }
