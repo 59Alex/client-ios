@@ -63,6 +63,7 @@ struct VoiceRecordButton: View {
                 isLocked = true
                 Task { _ = await recorder.start() }
             }
+            .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier("chat.voice.record")
             .onChange(of: recorder.isActive) { _, active in
                 if !active { isLocked = false }

@@ -31,7 +31,7 @@ final class ChatFlowUITests: XCTestCase {
         let input = app.textFields["chat.input"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))
         // Пустое поле: вместо «Отправить» кнопка записи голосового, как на вебе.
-        XCTAssertTrue(app.buttons["chat.voice.record"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["chat.voice.record"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["chat.send"].exists)
         input.tap()
         input.typeText("Сообщение с iPhone")
