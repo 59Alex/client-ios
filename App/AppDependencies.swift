@@ -92,7 +92,7 @@ final class AppDependencies {
         let groupCallAPI = overrides.groupCalls ?? RemoteGroupCallAPI(main: mainClient, events: eventsClient, outbox: outboxClient, eventStream: eventStream)
         let roomVoiceAPI = overrides.roomVoice ?? RemoteRoomVoiceAPI(main: mainClient, events: eventsClient, outbox: outboxClient, eventStream: eventStream)
         let callRoom: @MainActor () -> any CallRoom = overrides.makeCallRoom ?? { LiveKitCallRoom() }
-        let microphone: @MainActor () async -> Bool = overrides.makeCallRoom == nil ? { await MicrophonePermission.request() } : { true }
+        let usesStubRooms = overrides.makeCallRoom != nil
         let files = overrides.fileAPI ?? RemoteFileAPI(client: s3Client)
         let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("connect-media", isDirectory: true)
@@ -115,8 +115,8 @@ final class AppDependencies {
             settings: settingsAPI,
             deviceId: Self.deviceId(),
             groupCallAPI: groupCallAPI,
-            groupCalls: GroupCallModel(me: me, api: groupCallAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: microphone),
-            roomVoice: RoomVoiceModel(me: me, api: roomVoiceAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: microphone),
+            groupCalls: GroupCallModel(me: me, api: groupCallAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: { usesStubRooms ? true : await MicrophonePermission.request() }),
+            roomVoice: RoomVoiceModel(me: me, api: roomVoiceAPI, rtcUrl: config.rtcWebSocketUrl, makeRoom: callRoom, sessionId: { await status.currentSessionId(userId: user.userId) }, requestMicrophone: { usesStubRooms ? true : await MicrophonePermission.request() }),
             makeRoom: { RoomModel(roomId: $0, me: user.userId, api: roomsAPI) },
             makeCalendar: { RoomCalendarModel(roomId: $0, api: roomsAPI) },
             makeFeed: { FeedModel(feedId: $0, me: chatUser, api: roomsAPI) },
