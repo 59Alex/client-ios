@@ -169,6 +169,27 @@ enum UITestStub {
         )
     }
 
+    /// После входа ждёт входящий групповой звонок в «QA Group».
+    static let incomingGroupCallArgument = "-ui-test-incoming-group-call"
+
+    static func makeGroupCallAPI(arguments: [String]) -> FakeGroupCallAPI {
+        let incoming = GroupCallRecord(id: "group-call-incoming", callerUserId: "qa-2", groupChatId: "group-1", name: "QA Group", participants: [("qa-2", "stub")], callees: [.init(userId: "qa-1", canceled: false)])
+        return FakeGroupCallAPI(records: [incoming], pendingIncoming: arguments.contains(incomingGroupCallArgument) ? incoming : nil)
+    }
+
+    /// Комната группового звонка или голосового канала: собеседник qa-2 появляется через полсекунды.
+    @MainActor
+    static func makeGroupRoom() -> FakeCallRoom {
+        let room = FakeCallRoom()
+        room.onPublish = { room in
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
+                room.emitRemoteAudio(userId: "qa-2")
+            }
+        }
+        return room
+    }
+
     /// Файлы стаба: аватар найденного пользователя и картинка в чате.
     static func makeFileAPI() -> FakeFileAPI {
         FakeFileAPI(files: [
