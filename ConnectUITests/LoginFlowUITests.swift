@@ -113,6 +113,30 @@ final class LoginFlowUITests: XCTestCase {
     }
 
     @MainActor
+    func testGuestJoinsMeetingWithoutAccount() throws {
+        let app = makeApp()
+        app.launch()
+        let guest = app.buttons["login.guestMeeting"]
+        XCTAssertTrue(guest.waitForExistence(timeout: 10))
+        guest.tap()
+
+        type("https://cnnect.ru/share/meet/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde", into: app.textFields["guest.link"], app: app)
+        type("Гость Иван", into: app.textFields["guest.name"], app: app)
+        app.buttons["guest.join"].tap()
+
+        XCTAssertTrue(app.staticTexts["guest.title"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Добро пожаловать на встречу'")).firstMatch.waitForExistence(timeout: 15))
+        attachScreenshot("03-guest-meeting")
+
+        type("Здравствуйте", into: app.textFields["guest.input"], app: app)
+        app.buttons["guest.send"].tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Здравствуйте'")).firstMatch.waitForExistence(timeout: 5))
+
+        app.buttons["guest.leave"].tap()
+        XCTAssertTrue(guest.waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     private func attachScreenshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = name

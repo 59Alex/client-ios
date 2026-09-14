@@ -19,6 +19,8 @@ final class AppDependencies {
     let config: AppConfig
     let auth: AuthService
     let session: SessionModel
+    /// Гость на встрече без аккаунта.
+    let guestMeeting: GuestMeetingModel
     /// Оформление живёт дольше сессии: экран входа уже в выбранной теме.
     let appearance: AppearanceModel
 
@@ -54,6 +56,7 @@ final class AppDependencies {
         var backgrounds: (any BackgroundsAPI)?
         var navigationDefaults: UserDefaults?
         var meetings: (any MeetingsAPI)?
+        var guestMeeting: (any GuestMeetingAPI)?
         var mediaProbe: (any MediaServerProbe)?
         var microphoneDenied = false
     }
@@ -83,6 +86,12 @@ final class AppDependencies {
         appearance = AppearanceModel(
             api: overrides.appearance ?? RemoteAppearanceAPI(settings: settingsClient),
             store: overrides.appearanceStore ?? DeviceAppearanceStore()
+        )
+        guestMeeting = GuestMeetingModel(
+            api: overrides.guestMeeting ?? RemoteGuestMeetingAPI(client: HTTPClient(baseURL: config.mainApiUrl, transport: transport)),
+            rtcUrl: config.rtcWebSocketUrl,
+            makeRoom: overrides.makeCallRoom ?? { LiveKitCallRoom() },
+            requestMicrophone: { overrides.makeCallRoom == nil ? await MicrophonePermission.request() : true }
         )
         AppTheme.use(appearance, backgrounds: ChatBackgroundsModel(api: overrides.backgrounds ?? RemoteBackgroundsAPI(s3: s3Client)))
     }
@@ -207,6 +216,7 @@ final class AppDependencies {
                     backgrounds: FakeBackgroundsAPI(),
                     navigationDefaults: UITestStub.navigationDefaults(arguments: arguments),
                     meetings: FakeMeetingsAPI(acceptGroupId: "group-1"),
+                    guestMeeting: FakeGuestMeetingAPI(),
                     mediaProbe: UITestStub.MediaProbe(reachable: !arguments.contains(UITestStub.mediaDownArgument)),
                     microphoneDenied: arguments.contains(UITestStub.microphoneDeniedArgument)
                 )

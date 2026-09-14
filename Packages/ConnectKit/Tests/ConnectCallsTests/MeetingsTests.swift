@@ -54,3 +54,78 @@ struct MeetingsTests {
         #expect(model.guestLinkError == MeetingError.forbidden.message)
     }
 }
+
+@MainActor
+@Suite("Гость на встрече")
+struct GuestMeetingTests {
+    private let link = "https://cnnect.ru/share/meet/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde"
+
+    private func makeModel(api: FakeGuestMeetingAPI, rooms: GuestRooms, microphone: Bool = true) -> GuestMeetingModel {
+        GuestMeetingModel(api: api, rtcUrl: URL(string: "wss://rtc.cnnect.ru")!, makeRoom: {
+            let room = FakeCallRoom()
+            rooms.items.append(room)
+            return room
+        }, requestMicrophone: { microphone }, sleep: { _ in try await Task.sleep(for: .milliseconds(20)) })
+    }
+
+    @Test("проверка ссылки и имени до запроса")
+    func validation() async {
+        let api = FakeGuestMeetingAPI()
+        let model = makeModel(api: api, rooms: GuestRooms())
+        #expect(await model.join(link: "https://cnnect.ru/invite/x", displayName: "Гость") == "Вставьте ссылку на встречу")
+        #expect(await model.join(link: link, displayName: "   ") == "Укажите, как вас называть")
+        #expect(await model.join(link: link, displayName: String(repeating: "я", count: 81)) == "Имя не длиннее 80 символов")
+        #expect(await api.joined.isEmpty)
+    }
+
+    @Test("вход: голос с данными гостя, сообщения, отправка, выход закрывает сессию")
+    func flow() async throws {
+        let api = FakeGuestMeetingAPI()
+        let rooms = GuestRooms()
+        let model = makeModel(api: api, rooms: rooms)
+
+        #expect(await model.join(link: link, displayName: " Иван ") == nil)
+        #expect(model.phase == .active)
+        #expect(model.title == "QA Group")
+        let room = try #require(rooms.items.first)
+        #expect(room.token == "voice-token")
+        let rawName = try #require(room.publishedTrackName)
+        let name = try #require(TrackName.decode(rawName))
+        #expect(CallClientData.decode(name.clientData)?.userId == "guest:1")
+        #expect(CallClientData.decode(name.clientData)?.username == "Иван")
+        #expect(await api.joined.first?.name == "Иван")
+
+        for _ in 0..<100 where model.messages.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.messages.first?.message == "Добро пожаловать на встречу")
+
+        model.draft = "Всем привет"
+        await model.send()
+        #expect(await api.sent == ["Всем привет"])
+        #expect(model.messages.last?.message == "Всем привет")
+
+        await model.leave()
+        #expect(model.phase == .idle)
+        #expect(room.isDisconnected)
+        #expect(await api.leftTokens == ["session-token"])
+    }
+
+    @Test("звонок завершился — гость видит это и выходит; ошибка ссылки показывается текстом")
+    func ended() async throws {
+        let api = FakeGuestMeetingAPI()
+        let model = makeModel(api: api, rooms: GuestRooms())
+        _ = await model.join(link: link, displayName: "Иван")
+        await api.setActive(false)
+        for _ in 0..<200 where model.phase == .active { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.phase == .ended("Звонок завершён"))
+
+        let failing = FakeGuestMeetingAPI()
+        await failing.setFailure(.expired)
+        let other = makeModel(api: failing, rooms: GuestRooms())
+        #expect(await other.join(link: link, displayName: "Иван") == MeetingError.expired.message)
+    }
+}
+
+@MainActor
+final class GuestRooms {
+    var items: [FakeCallRoom] = []
+}
