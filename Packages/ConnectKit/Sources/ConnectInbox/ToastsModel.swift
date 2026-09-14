@@ -51,7 +51,11 @@ public final class ToastsModel {
     }
 
     public static func title(_ notification: InboxNotification) -> String {
-        notification.chatType == .roomEvent ? "Событие комнаты" : "Новое сообщение"
+        switch notification.chatType {
+        case .roomEvent: "Событие комнаты"
+        case .postComment: "Новый комментарий"
+        default: "Новое сообщение"
+        }
     }
 
     public static func text(_ notification: InboxNotification) -> String {

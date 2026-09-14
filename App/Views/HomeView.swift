@@ -96,6 +96,9 @@ struct HomeView: View {
                             await dependencies.rooms.load()
                             navigation.openRoom(id: roomId, name: name)
                         }
+                    } onOpenFeeds: {
+                        navigation.goHome()
+                        navigation.tab = .feeds
                     }
                     .environment(\.mediaLoader, dependencies.mediaLoader)
                 }
@@ -270,7 +273,7 @@ struct HomeView: View {
             navigation.open(ChatRoute(kind: .p2p, roomId: chatId, title: chatTitle(dependencies.p2pChats, chatId) ?? "Личный чат"))
         case .group:
             navigation.open(ChatRoute(kind: .group, roomId: chatId, title: chatTitle(dependencies.groupChats, chatId) ?? "Группа"))
-        case .postFeed:
+        case .postFeed, .postComment:
             navigation.tab = .feeds
         case .roomEvent:
             if let room = dependencies.rooms.rooms.first(where: { $0.id == chatId }) {

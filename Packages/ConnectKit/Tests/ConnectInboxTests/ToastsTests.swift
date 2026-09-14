@@ -55,5 +55,8 @@ struct ToastsTests {
         #expect(ToastsModel.title(event) == "Событие комнаты")
         #expect(ToastsModel.title(InboxNotification(id: 2, chatType: .p2p)) == "Новое сообщение")
         #expect(ToastsModel.text(InboxNotification(id: 2, chatType: .p2p, body: " ")) == "Вложение")
+        let comment = InboxNotification(id: 3, chatType: .postComment, body: "Отлично")
+        #expect(ToastsModel.title(comment) == "Новый комментарий")
+        #expect(comment.title == "Комментарий к посту")
     }
 }
