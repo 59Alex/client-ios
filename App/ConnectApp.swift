@@ -7,7 +7,6 @@ struct ConnectApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(dependencies: dependencies)
-                .tint(Palette.accent)
         }
     }
 }

@@ -5,7 +5,7 @@ import ConnectFeatures
 import ConnectRooms
 import SwiftUI
 
-/// Вкладка «Комнаты»: список комнат, создание и вход по ссылке.
+/// Открытая из рейла комната со стеком каналов; без выбранной комнаты — список комнат.
 struct RoomsListView: View {
     let model: RoomsModel
     let unread: UnreadModel
@@ -18,47 +18,30 @@ struct RoomsListView: View {
     let voice: RoomVoiceModel
     let directory: UserDirectory
     let canJoinVoice: @MainActor () -> Bool
+    let room: AppNavigation.RoomSelection?
+    let onOpenRoom: (RoomCard) -> Void
     @Binding var path: [RoomRoute]
-
-    @State private var isCreateShown = false
-    @State private var isJoinShown = false
 
     var body: some View {
         NavigationStack(path: $path) {
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Palette.canvas)
-                .navigationTitle("Комнаты")
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Menu {
-                            Button("Создать комнату", systemImage: "plus") { isCreateShown = true }
-                            Button("Войти по приглашению", systemImage: "link") { isJoinShown = true }
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .accessibilityLabel("Добавить комнату")
-                        .accessibilityIdentifier("rooms.add")
-                    }
+            Group {
+                if let room {
+                    RoomScreen(model: makeRoom(room.id), title: room.name, unread: unread, makeCalendar: makeCalendar, groupTools: groupTools, inviteToRoom: inviteToRoom, origin: origin, voice: voice, directory: directory, canJoinVoice: canJoinVoice)
+                        .id(room.id)
+                } else {
+                    content
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Palette.canvas)
+                        .toolbar(.hidden, for: .navigationBar)
                 }
-                .navigationDestination(for: RoomRoute.self) { route in
-                    switch route {
-                    case let .room(id, name):
-                        RoomScreen(model: makeRoom(id), title: name, unread: unread, makeCalendar: makeCalendar, groupTools: groupTools, inviteToRoom: inviteToRoom, origin: origin, voice: voice, directory: directory, canJoinVoice: canJoinVoice)
-                    case let .channel(route):
-                        RoomChannelContainer(route: route, makeChat: makeChat)
-                    }
-                }
-        }
-        .task { await model.load() }
-        .sheet(isPresented: $isCreateShown) {
-            TextPromptSheet(title: "Новая комната", placeholder: "Название", actionTitle: "Создать", identifier: "rooms.create") { name in
-                await model.createRoom(name: name)
             }
-        }
-        .sheet(isPresented: $isJoinShown) {
-            TextPromptSheet(title: "Войти по приглашению", placeholder: "Ссылка-приглашение", actionTitle: "Войти", identifier: "rooms.join") { link in
-                await model.join(link: link)
+            .navigationDestination(for: RoomRoute.self) { route in
+                switch route {
+                case let .room(id, name):
+                    RoomScreen(model: makeRoom(id), title: name, unread: unread, makeCalendar: makeCalendar, groupTools: groupTools, inviteToRoom: inviteToRoom, origin: origin, voice: voice, directory: directory, canJoinVoice: canJoinVoice)
+                case let .channel(route):
+                    RoomChannelContainer(route: route, makeChat: makeChat)
+                }
             }
         }
     }
@@ -80,7 +63,7 @@ struct RoomsListView: View {
             ContentUnavailableView("Комнат пока нет", systemImage: "square.grid.2x2", description: Text("Создайте комнату или войдите по приглашению"))
         case let .loaded(rooms):
             List(rooms) { room in
-                NavigationLink(value: RoomRoute.room(id: room.id, name: room.name)) {
+                Button { onOpenRoom(room) } label: {
                     HStack(spacing: 12) {
                         Avatar(name: room.name, imageKey: room.avatarKey)
                         Text(room.name)
@@ -91,7 +74,7 @@ struct RoomsListView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .listRowBackground(Palette.surface)
+                .listRowBackground(Color.clear)
                 .accessibilityIdentifier("rooms.row.\(room.id)")
             }
             .scrollContentBackground(.hidden)
@@ -133,107 +116,53 @@ private struct RoomScreen: View {
     @State private var isCalendarShown = false
     @State private var isInviteShown = false
     @State private var newChannel: NewChannel?
-    @State private var isActionsShown = false
+
+    private var name: String { model.details?.name ?? title }
 
     var body: some View {
-        List {
-            Section("Текстовые каналы") {
-                if model.textChannels.isEmpty {
-                    Text("Каналов пока нет").foregroundStyle(Palette.textSecondary)
-                }
-                ForEach(model.textChannels) { channel in
-                    NavigationLink(value: RoomRoute.channel(ChatRoute(kind: .channel, roomId: channel.id, title: "# \(channel.name)"))) {
-                        HStack {
-                            Label(channel.name, systemImage: "number")
-                                .foregroundStyle(Palette.textPrimary)
-                            Spacer()
-                            UnreadBadge(count: unread.unreadCount(kind: .channel, roomId: channel.id))
-                        }
-                    }
-                    .accessibilityIdentifier("room.channel.\(channel.id)")
-                }
-            }
-            .listRowBackground(Palette.surface)
+        VStack(spacing: 0) {
+            header
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(name)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(Palette.roomName)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .accessibilityAddTraits(.isHeader)
 
-            Section {
-                ForEach(model.voiceChannels) { channel in
-                    let inChannel = voice.channelId == channel.id && voice.phase != .idle
-                    Button {
-                        Task {
-                            if inChannel {
-                                await voice.leave()
-                            } else if canJoinVoice() {
-                                await voice.join(channelId: channel.id, name: channel.name)
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Label(channel.name, systemImage: inChannel ? "speaker.wave.3.fill" : "speaker.wave.2")
-                                .foregroundStyle(inChannel ? Palette.accent : Palette.textPrimary)
-                            Spacer()
-                            Text(inChannel ? "Выйти" : "Войти")
-                                .font(.subheadline)
-                                .foregroundStyle(Palette.accent)
-                        }
+                    sectionHeader("Текстовые каналы", addLabel: "Создать текстовый канал", identifier: "room.createText", kind: .text)
+                    if model.textChannels.isEmpty {
+                        emptyRow("Каналов пока нет")
                     }
-                    .accessibilityIdentifier("room.voice.\(channel.id)")
-                    ForEach(voice.presence.participants(in: channel.id), id: \.userId) { participant in
-                        let speaking = voice.channelId == channel.id && (voice.session?.participants.first { $0.userId == participant.userId }?.isSpeaking ?? false)
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(speaking ? Palette.accent : Palette.border)
-                                .frame(width: 8, height: 8)
-                            Text(memberName(participant.userId))
-                                .font(.subheadline)
-                                .foregroundStyle(Palette.textPrimary)
-                            Spacer()
-                            if participant.muted { Image(systemName: "mic.slash").foregroundStyle(Palette.textSecondary).accessibilityLabel("Микрофон выключен") }
-                            if participant.speakerOff { Image(systemName: "speaker.slash").foregroundStyle(Palette.textSecondary).accessibilityLabel("Звук выключен") }
+                    ForEach(model.textChannels) { channel in
+                        NavigationLink(value: RoomRoute.channel(ChatRoute(kind: .channel, roomId: channel.id, title: "# \(channel.name)"))) {
+                            ChannelRow(systemImage: "number", name: channel.name, highlighted: false, unread: unread.unreadCount(kind: .channel, roomId: channel.id))
                         }
-                        .padding(.leading, 28)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("room.voice.participant.\(participant.userId)")
+                        .buttonStyle(ChannelRowStyle())
+                        .accessibilityIdentifier("room.channel.\(channel.id)")
                     }
-                }
-                if model.voiceChannels.isEmpty {
-                    Text("Голосовых каналов нет").foregroundStyle(Palette.textSecondary)
-                }
-            } header: {
-                Text("Голосовые каналы")
-            }
-            .listRowBackground(Palette.surface)
 
-            if model.failed {
-                Text("Не удалось загрузить комнату").foregroundStyle(Palette.danger)
+                    sectionHeader("Голосовые каналы", addLabel: "Создать голосовой канал", identifier: "room.createVoice", kind: .voice)
+                    if model.voiceChannels.isEmpty {
+                        emptyRow("Голосовых каналов нет")
+                    }
+                    ForEach(model.voiceChannels) { channel in
+                        voiceChannel(channel)
+                    }
+
+                    if model.failed {
+                        Text("Не удалось загрузить комнату")
+                            .foregroundStyle(Palette.danger)
+                            .padding(16)
+                    }
+                }
+                .padding(.bottom, 16)
             }
+            .refreshable { await model.load() }
         }
-        .scrollContentBackground(.hidden)
         .background(Palette.canvas)
-        .navigationTitle(model.details?.name ?? title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                ShareLink(item: InviteLinks.roomURL(origin: origin, roomId: model.roomId)) {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .accessibilityLabel("Поделиться ссылкой-приглашением")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button { isActionsShown = true } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .accessibilityLabel("Действия комнаты")
-                .accessibilityIdentifier("room.menu")
-            }
-        }
-        .confirmationDialog("Комната", isPresented: $isActionsShown) {
-            Button("Календарь") { isCalendarShown = true }
-            Button("Пригласить") { isInviteShown = true }
-            if model.canManage {
-                Button("Текстовый канал") { newChannel = NewChannel(kind: .text) }
-                Button("Голосовой канал") { newChannel = NewChannel(kind: .voice) }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .task { await model.load() }
         .task(id: model.voiceChannels.map(\.id)) {
             await voice.watch(channelIds: model.voiceChannels.map(\.id))
@@ -241,7 +170,6 @@ private struct RoomScreen: View {
         .task(id: voice.presence.byKey.keys.sorted()) {
             await directory.load(voice.presence.byKey.values.map(\.userId))
         }
-        .refreshable { await model.load() }
         .sheet(isPresented: $isCalendarShown) {
             RoomCalendarSheet(model: makeCalendar(model.roomId), canCreate: model.canManage)
         }
@@ -255,6 +183,131 @@ private struct RoomScreen: View {
                 await model.createChannel(name: name, kind: channel.kind)
             }
         }
+    }
+
+    /// Шапка комнаты (`room-sidebar-header`): буква комнаты, приглашение, ссылка и календарь.
+    private var header: some View {
+        HStack(spacing: 4) {
+            Text(String(name.first(where: \.isLetter) ?? "#").uppercased())
+                .font(.largeTitle.weight(.heavy))
+                .foregroundStyle(Palette.textPrimary)
+                .padding(.leading, 16)
+                .accessibilityHidden(true)
+            Spacer()
+            ShellIconButton(systemImage: "person.badge.plus", label: "Пригласить в комнату", identifier: "room.invite") { isInviteShown = true }
+            ShareLink(item: InviteLinks.roomURL(origin: origin, roomId: model.roomId)) {
+                Image(systemName: "link")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Palette.textPrimary)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Поделиться ссылкой-приглашением")
+            .accessibilityIdentifier("room.share")
+            ShellIconButton(systemImage: "calendar", label: "Открыть календарь комнаты", identifier: "room.calendar") { isCalendarShown = true }
+        }
+        .padding(.trailing, 8)
+        .frame(minHeight: 64)
+        .background(Palette.chrome)
+    }
+
+    private func sectionHeader(_ text: String, addLabel: String, identifier: String, kind: RoomChannel.Kind) -> some View {
+        HStack {
+            Text(text.uppercased())
+                .font(.caption.weight(.bold))
+                .kerning(0.6)
+                .foregroundStyle(Palette.textSecondary)
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            if model.canManage {
+                ShellIconButton(systemImage: "plus", label: addLabel, identifier: identifier) { newChannel = NewChannel(kind: kind) }
+            }
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .frame(minHeight: 44)
+        .padding(.top, 12)
+    }
+
+    private func emptyRow(_ text: String) -> some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Palette.textSecondary)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 36)
+    }
+
+    @ViewBuilder
+    private func voiceChannel(_ channel: RoomChannel) -> some View {
+        let inChannel = voice.channelId == channel.id && voice.phase != .idle
+        Button {
+            Task {
+                if inChannel {
+                    await voice.leave()
+                } else if canJoinVoice() {
+                    await voice.join(channelId: channel.id, name: channel.name)
+                }
+            }
+        } label: {
+            ChannelRow(systemImage: inChannel ? "speaker.wave.3.fill" : "speaker.wave.2", name: channel.name, highlighted: inChannel, unread: 0, trailing: inChannel ? "Выйти" : nil)
+        }
+        .buttonStyle(ChannelRowStyle())
+        .accessibilityIdentifier("room.voice.\(channel.id)")
+        ForEach(voice.presence.participants(in: channel.id), id: \.userId) { participant in
+            let speaking = voice.channelId == channel.id && (voice.session?.participants.first { $0.userId == participant.userId }?.isSpeaking ?? false)
+            HStack(spacing: 8) {
+                Avatar(name: memberName(participant.userId), size: 24)
+                    .overlay { if speaking { Circle().strokeBorder(Palette.success, lineWidth: 2) } }
+                Text(memberName(participant.userId))
+                    .font(.subheadline)
+                    .foregroundStyle(Palette.roomName)
+                Spacer()
+                if participant.muted { Image(systemName: "mic.slash").foregroundStyle(Palette.textSecondary).accessibilityLabel("Микрофон выключен") }
+                if participant.speakerOff { Image(systemName: "speaker.slash").foregroundStyle(Palette.textSecondary).accessibilityLabel("Звук выключен") }
+            }
+            .frame(minHeight: 32)
+            .padding(.leading, 10)
+            .padding(.trailing, 16)
+            .overlay(alignment: .leading) { Rectangle().fill(Palette.textSecondary.opacity(0.3)).frame(width: 1) }
+            .padding(.leading, 34)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("room.voice.participant.\(participant.userId)")
+        }
+    }
+}
+
+/// Строка канала комнаты (`room-channel`): иконка, имя, счётчик.
+private struct ChannelRow: View {
+    let systemImage: String
+    let name: String
+    let highlighted: Bool
+    let unread: Int
+    var trailing: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(highlighted ? Palette.success : Palette.textSecondary)
+                .frame(width: 22)
+            Text(name)
+                .foregroundStyle(Palette.roomName)
+                .lineLimit(1)
+            Spacer()
+            if let trailing {
+                Text(trailing).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.danger)
+            }
+            if unread > 0 { CountBadge(count: unread) }
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct ChannelRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Palette.selected : .clear, in: RoundedRectangle(cornerRadius: 9))
+            .padding(.horizontal, 8)
     }
 }
 
@@ -441,7 +494,7 @@ struct FeedsListView: View {
                             }
                             .padding(.vertical, 4)
                         }
-                        .listRowBackground(Palette.surface)
+                        .listRowBackground(Color.clear)
                         .accessibilityIdentifier("feeds.row.\(feed.id)")
                     }
                     .scrollContentBackground(.hidden)
@@ -450,17 +503,13 @@ struct FeedsListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.canvas)
-            .navigationTitle("Каналы")
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .bottom, alignment: .leading) {
+                CreateButton(label: "Создать канал", identifier: "feeds.create") { isCreateShown = true }
+            }
             .navigationDestination(for: String.self) { feedId in
                 FeedScreen(model: makeFeed(feedId), title: model.feeds.first { $0.id == feedId }?.name ?? "Канал", unread: unread) {
                     Task { await model.load() }
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { isCreateShown = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel("Создать канал")
-                        .accessibilityIdentifier("feeds.create")
                 }
             }
         }
@@ -687,12 +736,8 @@ struct UnreadBadge: View {
 
     var body: some View {
         if count > 0 {
-            Text(count > 99 ? "99+" : "\(count)")
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(Palette.onAccent)
-                .padding(.horizontal, 7)
-                .frame(minWidth: 22, minHeight: 22)
-                .background(Palette.accent, in: Capsule())
+            CountBadge(count: count)
+                .accessibilityHidden(false)
                 .accessibilityLabel("Непрочитанных: \(count)")
         }
     }

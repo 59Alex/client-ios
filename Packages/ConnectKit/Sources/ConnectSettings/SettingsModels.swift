@@ -144,7 +144,7 @@ public final class VoiceSettingsModel {
         self.api = api
     }
 
-    public static func isValidDeviceId(_ id: String) -> Bool {
+    public nonisolated static func isValidDeviceId(_ id: String) -> Bool {
         let trimmed = id.trimmingCharacters(in: .whitespaces)
         return !trimmed.isEmpty && trimmed != "undefined" && trimmed != "null"
     }

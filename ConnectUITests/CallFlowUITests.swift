@@ -13,14 +13,14 @@ final class CallFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-stub", "-ui-test-signed-in"] + extraArguments
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Контакты"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.tab.contacts"].waitForExistence(timeout: 10))
         return app
     }
 
     @MainActor
     func testOutgoingCallFromContacts() throws {
         let app = launchSignedIn()
-        app.tabBars.buttons["Контакты"].tap()
+        app.buttons["home.tab.contacts"].tap()
 
         let callButton = app.buttons["contacts.call.qa_wallpaper_2"]
         XCTAssertTrue(callButton.waitForExistence(timeout: 10))
@@ -61,7 +61,7 @@ final class CallFlowUITests: XCTestCase {
         waitForExpectations(timeout: 10)
 
         app.buttons["call.hangup"].tap()
-        XCTAssertTrue(app.tabBars.buttons["Контакты"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["home.tab.contacts"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["call.hangup"].exists)
     }
 
@@ -73,7 +73,7 @@ final class CallFlowUITests: XCTestCase {
         XCTAssertTrue(decline.waitForExistence(timeout: 10))
         decline.tap()
 
-        XCTAssertTrue(app.tabBars.buttons["Контакты"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["home.tab.contacts"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["call.accept"].exists)
     }
 

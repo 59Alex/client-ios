@@ -5,9 +5,11 @@ import SwiftUI
 
 /// Уведомления и приглашения в одном листе (колокольчик и приглашения веб-клиента).
 struct InboxView: View {
-    enum Section: Hashable {
+    enum Section: Hashable, Identifiable {
         case notifications
         case invitations
+
+        var id: Self { self }
     }
 
     let notifications: NotificationCenterModel
@@ -16,7 +18,15 @@ struct InboxView: View {
     var onOpenRoom: ((_ roomId: String, _ name: String) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var section: Section = .notifications
+    @State private var section: Section
+
+    init(notifications: NotificationCenterModel, invitations: InvitationsModel, initialSection: Section = .notifications, onOpenChat: @escaping (ChatRoute) -> Void, onOpenRoom: ((_ roomId: String, _ name: String) -> Void)? = nil) {
+        self.notifications = notifications
+        self.invitations = invitations
+        self.onOpenChat = onOpenChat
+        self.onOpenRoom = onOpenRoom
+        _section = State(initialValue: initialSection)
+    }
 
     var body: some View {
         NavigationStack {

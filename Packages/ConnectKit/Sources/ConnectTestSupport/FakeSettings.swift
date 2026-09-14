@@ -1,3 +1,4 @@
+import ConnectNetworking
 import ConnectSettings
 import Foundation
 
@@ -69,4 +70,61 @@ public actor FakeSettingsAPI: SettingsAPI {
     public func greeting(userId: String) async throws -> GreetingSticker? { sticker }
     public func setGreeting(_ value: GreetingSticker) async throws { sticker = value }
     public func resetGreeting() async throws { sticker = nil }
+}
+
+/// Оформление в памяти: ревизии, конфликты записи и журнал отправленных тел.
+public actor FakeAppearanceAPI: AppearanceAPI {
+    public private(set) var stored: AppearanceSettings
+    public private(set) var puts: [AppearanceSettings] = []
+    public private(set) var gets = 0
+    public private(set) var deviceIds: [String?] = []
+    public var conflicts = 0
+    public var failGets = false
+
+    public init(preferences: AppearancePreferences = .standard, revision: Int = 0) {
+        stored = AppearanceSettings(preferences: preferences, revision: revision)
+    }
+
+    public func setConflicts(_ value: Int) { conflicts = value }
+    public func setFailGets(_ value: Bool) { failGets = value }
+
+    /// Правка с другого устройства той же записи.
+    public func externalUpdate(_ preferences: AppearancePreferences) {
+        stored = AppearanceSettings(preferences: preferences, revision: stored.revision + 1)
+    }
+
+    public func appearance(deviceId: String?) async throws -> AppearanceSettings {
+        gets += 1
+        deviceIds.append(deviceId)
+        if failGets { throw APIError.http(statusCode: 503, body: nil) }
+        return stored
+    }
+
+    public func updateAppearance(_ settings: AppearanceSettings, deviceId: String?) async throws -> AppearanceSettings {
+        puts.append(settings)
+        if conflicts > 0 || settings.revision != stored.revision {
+            conflicts = max(0, conflicts - 1)
+            throw APIError.http(statusCode: 409, body: nil)
+        }
+        stored = AppearanceSettings(preferences: settings.preferences, revision: stored.revision + 1)
+        return stored
+    }
+}
+
+/// Хранилище оформления устройства в памяти.
+public final class MemoryAppearanceStore: AppearanceStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: AppearancePreferences?
+
+    public init(_ value: AppearancePreferences? = nil) {
+        self.value = value
+    }
+
+    public func load() -> AppearancePreferences? {
+        lock.withLock { value }
+    }
+
+    public func save(_ preferences: AppearancePreferences) {
+        lock.withLock { value = preferences }
+    }
 }

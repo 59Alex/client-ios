@@ -19,6 +19,8 @@ final class AppDependencies {
     let config: AppConfig
     let auth: AuthService
     let session: SessionModel
+    /// Оформление живёт дольше сессии: экран входа уже в выбранной теме.
+    let appearance: AppearanceModel
 
     private let mainClient: HTTPClient
     private let eventsClient: HTTPClient
@@ -45,6 +47,8 @@ final class AppDependencies {
         var settings: (any SettingsAPI)?
         var groupCalls: (any GroupCallAPI)?
         var roomVoice: (any RoomVoiceAPI)?
+        var appearance: (any AppearanceAPI)?
+        var appearanceStore: (any AppearanceStore)?
     }
 
     init(
@@ -68,6 +72,11 @@ final class AppDependencies {
         settingsClient = HTTPClient(baseURL: config.settingsApiUrl, transport: transport, tokenProvider: auth, timeout: 10)
         usersClient = HTTPClient(baseURL: config.userApiUrl, transport: transport, tokenProvider: auth)
         session = SessionModel(auth: auth, users: RemoteUserRepository(client: mainClient))
+        appearance = AppearanceModel(
+            api: overrides.appearance ?? RemoteAppearanceAPI(settings: settingsClient),
+            store: overrides.appearanceStore ?? DeviceAppearanceStore()
+        )
+        AppTheme.use(appearance)
     }
 
     /// Зависимости экранов вошедшего пользователя; живут, пока он не выйдет.
@@ -114,6 +123,7 @@ final class AppDependencies {
             feeds: FeedsModel(me: user.userId, api: roomsAPI),
             uiOrigin: config.uiOrigin,
             settings: settingsAPI,
+            appearance: appearance,
             deviceId: Self.deviceId(),
             groupCallAPI: groupCallAPI,
             directory: UserDirectory(repository: contactsRepository),
@@ -168,7 +178,9 @@ final class AppDependencies {
                     rooms: UITestStub.makeRoomsAPI(),
                     settings: FakeSettingsAPI(userId: "qa-1", name: "QA Wallpaper", username: "@qa_wallpaper_1", email: "qa@example.com", takenUsernames: ["@qa_wallpaper_2"], sticker: GreetingSticker(urlS3: "user-gallery/qa-3/greeting.png", extension: ".png")),
                     groupCalls: UITestStub.makeGroupCallAPI(arguments: arguments),
-                    roomVoice: FakeRoomVoiceAPI(connected: [ChannelParticipantEvent(userId: "qa-2", channelId: "channel-voice", muted: true, kind: .connect)])
+                    roomVoice: FakeRoomVoiceAPI(connected: [ChannelParticipantEvent(userId: "qa-2", channelId: "channel-voice", muted: true, kind: .connect)]),
+                    appearance: FakeAppearanceAPI(preferences: UITestStub.appearance(arguments: arguments)),
+                    appearanceStore: MemoryAppearanceStore(UITestStub.appearance(arguments: arguments))
                 )
             )
         }
@@ -199,6 +211,7 @@ final class SignedInDependencies {
     let feeds: FeedsModel
     let uiOrigin: URL
     let settings: any SettingsAPI
+    let appearance: AppearanceModel
     let deviceId: String
     let groupCallAPI: any GroupCallAPI
     let directory: UserDirectory
@@ -228,6 +241,7 @@ final class SignedInDependencies {
         feeds: FeedsModel,
         uiOrigin: URL,
         settings: any SettingsAPI,
+        appearance: AppearanceModel,
         deviceId: String,
         groupCallAPI: any GroupCallAPI,
         directory: UserDirectory,
@@ -256,6 +270,7 @@ final class SignedInDependencies {
         self.feeds = feeds
         self.uiOrigin = uiOrigin
         self.settings = settings
+        self.appearance = appearance
         self.deviceId = deviceId
         self.groupCallAPI = groupCallAPI
         self.directory = directory

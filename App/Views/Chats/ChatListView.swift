@@ -10,45 +10,20 @@ struct ChatListView: View {
     let unread: UnreadModel
     let makeChat: @MainActor (ChatRoute) -> ChatModel
     @Binding var path: [ChatRoute]
-    let inboxBadge: Int
-    let onOpenInbox: () -> Void
     var onCreateGroup: (() -> Void)?
-    var onOpenProfile: (() -> Void)?
     var groupTools: GroupTools?
-
-    private var title: String { model.kind == .p2p ? "Чаты" : "Группы" }
+    /// Статусы собеседников для точки «в сети» на аватаре.
+    var statusOf: (String) -> UserStatus? = { _ in nil }
 
     var body: some View {
         NavigationStack(path: $path) {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Palette.canvas)
-                .navigationTitle(title)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button(action: onOpenInbox) {
-                            Image(systemName: inboxBadge > 0 ? "bell.badge" : "bell")
-                        }
-                        .accessibilityLabel(inboxBadge > 0 ? "Уведомления, новых: \(inboxBadge)" : "Уведомления")
-                        .accessibilityIdentifier("inbox.open")
-                    }
-                    if let onOpenProfile {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button(action: onOpenProfile) {
-                                Image(systemName: "person.crop.circle")
-                            }
-                            .accessibilityLabel("Профиль")
-                            .accessibilityIdentifier("profile.open")
-                        }
-                    }
+                .toolbar(.hidden, for: .navigationBar)
+                .safeAreaInset(edge: .bottom, alignment: .leading) {
                     if let onCreateGroup {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button(action: onCreateGroup) {
-                                Image(systemName: "plus")
-                            }
-                            .accessibilityLabel("Создать группу")
-                            .accessibilityIdentifier("groups.create")
-                        }
+                        CreateButton(label: "Создать группу", identifier: "groups.create", action: onCreateGroup)
                     }
                 }
                 .navigationDestination(for: ChatRoute.self) { route in
@@ -86,11 +61,13 @@ struct ChatListView: View {
         case let .loaded(chats):
             List(chats) { chat in
                 NavigationLink(value: ChatRoute(kind: chat.kind, roomId: chat.roomId, title: chat.title)) {
-                    ChatRow(chat: chat, unread: unread.unreadCount(kind: chat.kind, roomId: chat.roomId))
+                    ChatRow(chat: chat, unread: unread.unreadCount(kind: chat.kind, roomId: chat.roomId), status: chat.partnerUserId.flatMap(statusOf))
                 }
-                .listRowBackground(Palette.surface)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
                 .accessibilityIdentifier("chats.row.\(chat.roomId)")
             }
+            .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .refreshable { await model.load() }
         }
@@ -135,10 +112,11 @@ struct GroupTools {
 private struct ChatRow: View {
     let chat: ChatSummary
     let unread: Int
+    var status: UserStatus?
 
     var body: some View {
         HStack(spacing: 12) {
-            Avatar(name: chat.title, imageKey: chat.avatarKey)
+            Avatar(name: chat.title, status: status, size: 48, imageKey: chat.avatarKey)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
@@ -159,15 +137,7 @@ private struct ChatRow: View {
                         .foregroundStyle(Palette.textSecondary)
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    if unread > 0 {
-                        Text(unread > 99 ? "99+" : "\(unread)")
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(Palette.onAccent)
-                            .padding(.horizontal, 7)
-                            .frame(minWidth: 22, minHeight: 22)
-                            .background(Palette.accent, in: Capsule())
-                            .accessibilityLabel("Непрочитанных: \(unread)")
-                    }
+                    UnreadBadge(count: unread)
                 }
             }
         }

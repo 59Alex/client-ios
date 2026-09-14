@@ -29,7 +29,7 @@ final class LoginFlowUITests: XCTestCase {
         password.typeText("password")
         app.buttons["login.submit"].tap()
 
-        XCTAssertTrue(app.tabBars.buttons["Чаты"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.tab.chats"].waitForExistence(timeout: 10))
         attachScreenshot("02-home-chats")
     }
 
@@ -90,7 +90,7 @@ final class LoginFlowUITests: XCTestCase {
         attachScreenshot("05-email-verification")
 
         app.buttons["login.verify"].tap()
-        XCTAssertTrue(app.tabBars.buttons["Чаты"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.tab.chats"].waitForExistence(timeout: 10))
     }
 
     @MainActor

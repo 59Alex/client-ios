@@ -136,7 +136,7 @@ struct RoundControl: View {
     let title: String
     let systemImage: String
     let fill: Color
-    var foreground: Color = Palette.onAccent
+    var foreground: Color?
     let identifier: String
     let action: () -> Void
 
@@ -145,64 +145,12 @@ struct RoundControl: View {
             Image(systemName: systemImage)
                 .font(.title2.weight(.semibold))
                 .frame(width: 68, height: 68)
-                .foregroundStyle(foreground)
+                .foregroundStyle(foreground ?? Palette.onAccent)
                 .background(fill, in: Circle())
                 .overlay { Circle().strokeBorder(Palette.border) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
-        .accessibilityIdentifier(identifier)
-    }
-}
-
-/// Панель текущего голосового канала над вкладками.
-struct VoiceChannelBar: View {
-    let model: RoomVoiceModel
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(model.phase == .connecting ? "Подключение…" : "Голосовой канал")
-                    .font(.caption)
-                    .foregroundStyle(Palette.textSecondary)
-                Text(model.channelName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Palette.textPrimary)
-                    .lineLimit(1)
-                if case let .failed(message) = model.phase {
-                    Text(message).font(.caption).foregroundStyle(Palette.danger)
-                }
-            }
-            Spacer()
-            let muted = model.session?.isMuted ?? false
-            let speakerOff = model.session?.isSpeakerOff ?? false
-            barButton(muted ? "mic.slash.fill" : "mic.fill", label: muted ? "Включить микрофон" : "Выключить микрофон", identifier: "voice.mute") {
-                Task { await model.toggleMute() }
-            }
-            barButton(speakerOff ? "speaker.slash.fill" : "speaker.wave.2.fill", label: speakerOff ? "Включить звук" : "Выключить звук", identifier: "voice.speaker") {
-                Task { await model.toggleSpeakerOff() }
-            }
-            barButton("phone.down.fill", label: "Выйти из канала", identifier: "voice.leave", tint: Palette.danger) {
-                Task { await model.leave() }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.panel))
-        .overlay { RoundedRectangle(cornerRadius: Radius.panel).strokeBorder(Palette.border) }
-        .padding(.horizontal, 12)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("voice.bar")
-    }
-
-    private func barButton(_ image: String, label: String, identifier: String, tint: Color = Palette.textPrimary, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: image)
-                .frame(width: 44, height: 44)
-                .foregroundStyle(tint)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
         .accessibilityIdentifier(identifier)
     }
 }

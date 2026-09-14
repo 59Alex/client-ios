@@ -11,16 +11,14 @@ final class RoomsFlowUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-test-stub", "-ui-test-signed-in"]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Комнаты"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["home.tab.chats"].waitForExistence(timeout: 10))
         return app
     }
 
     @MainActor
     func testRoomChannelChatAndCalendar() throws {
         let app = launchSignedIn()
-        app.tabBars.buttons["Комнаты"].tap()
-
-        let room = app.buttons["rooms.row.room-1"]
+        let room = app.buttons["rail.room.room-1"]
         XCTAssertTrue(room.waitForExistence(timeout: 10))
         room.tap()
 
@@ -29,8 +27,7 @@ final class RoomsFlowUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Голосовой"].exists)
         attachScreenshot("50-room")
 
-        app.buttons["room.menu"].tap()
-        app.buttons["Календарь"].tap()
+        app.buttons["room.calendar"].tap()
         XCTAssertTrue(app.staticTexts["Планёрка"].waitForExistence(timeout: 10))
         attachScreenshot("51-calendar")
         app.buttons["Закрыть"].tap()
@@ -49,13 +46,11 @@ final class RoomsFlowUITests: XCTestCase {
     @MainActor
     func testCreateRoomChannel() throws {
         let app = launchSignedIn()
-        app.tabBars.buttons["Комнаты"].tap()
-        app.buttons["rooms.row.room-1"].tap()
+        app.buttons["rail.room.room-1"].tap()
 
-        let menu = app.buttons["room.menu"]
-        XCTAssertTrue(menu.waitForExistence(timeout: 10))
-        menu.tap()
-        app.buttons["Текстовый канал"].tap()
+        let create = app.buttons["room.createText"]
+        XCTAssertTrue(create.waitForExistence(timeout: 10))
+        create.tap()
 
         let field = app.textFields["room.createChannel.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
@@ -69,7 +64,7 @@ final class RoomsFlowUITests: XCTestCase {
     @MainActor
     func testFeedPublishPost() throws {
         let app = launchSignedIn()
-        app.tabBars.buttons["Каналы"].tap()
+        app.buttons["home.tab.feeds"].tap()
 
         let feed = app.buttons["feeds.row.feed-1"]
         XCTAssertTrue(feed.waitForExistence(timeout: 10))
