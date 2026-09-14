@@ -191,6 +191,7 @@ struct VoiceChannelBar: View {
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: Radius.panel))
         .overlay { RoundedRectangle(cornerRadius: Radius.panel).strokeBorder(Palette.border) }
         .padding(.horizontal, 12)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voice.bar")
     }
 

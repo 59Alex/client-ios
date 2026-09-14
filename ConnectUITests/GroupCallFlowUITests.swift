@@ -28,7 +28,7 @@ final class GroupCallFlowUITests: XCTestCase {
         call.tap()
 
         XCTAssertTrue(app.buttons["group.call.hangup"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.otherElements["group.call.participant.qa-2"].waitForExistence(timeout: 10) || app.staticTexts["QA Wallpaper Two"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["group.call.participant.qa-2"].waitForExistence(timeout: 10))
         attachScreenshot("70-group-call")
 
         app.buttons["group.call.mute"].tap()
@@ -57,10 +57,10 @@ final class GroupCallFlowUITests: XCTestCase {
 
         let voice = app.buttons["room.voice.channel-voice"]
         XCTAssertTrue(voice.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.otherElements["room.voice.participant.qa-2"].waitForExistence(timeout: 10) || app.staticTexts["Пользователь"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["room.voice.participant.qa-2"].waitForExistence(timeout: 10))
         voice.tap()
 
-        XCTAssertTrue(app.otherElements["voice.bar"].waitForExistence(timeout: 10) || app.buttons["voice.leave"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["voice.leave"].waitForExistence(timeout: 10))
         attachScreenshot("72-voice-channel")
         app.buttons["voice.mute"].tap()
         app.buttons["voice.leave"].tap()
