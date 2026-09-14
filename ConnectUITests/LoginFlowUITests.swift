@@ -22,15 +22,24 @@ final class LoginFlowUITests: XCTestCase {
         XCTAssertFalse(app.buttons["login.submit"].isEnabled)
         attachScreenshot("01-login")
 
-        username.tap()
-        username.typeText("@qa_wallpaper_1")
-        let password = app.secureTextFields["login.password"]
-        password.tap()
-        password.typeText("password")
+        type("@qa_wallpaper_1", into: username, app: app)
+        type("password", into: app.secureTextFields["login.password"], app: app)
         app.buttons["login.submit"].tap()
 
         XCTAssertTrue(app.buttons["home.tab.chats"].waitForExistence(timeout: 10))
         attachScreenshot("02-home-chats")
+    }
+
+    /// Сразу после запуска первое нажатие иногда не даёт полю фокус: ждём клавиатуру и нажимаем ещё раз.
+    @MainActor
+    private func type(_ text: String, into field: XCUIElement, app: XCUIApplication) {
+        for _ in 0..<3 {
+            field.tap()
+            if app.keyboards.firstMatch.waitForExistence(timeout: 2), (field.value(forKey: "hasKeyboardFocus") as? Bool) == true {
+                break
+            }
+        }
+        field.typeText(text)
     }
 
     @MainActor
