@@ -40,6 +40,8 @@ public protocol FileAPI: Sendable {
     func delete(urls: [String]) async throws
     /// Проценты загрузки файлов пользователя: SSE `GET /api/event/events?userId=&access_token=`.
     func uploadProgress(userId: String) -> AsyncThrowingStream<UploadProgress, any Error>
+    /// Голосовое в AAC для AVFoundation: webm/opus с веба сервис перекодирует (`GET /api/file/audio/aac`).
+    func playableVoice(urlS3: String) async throws -> Data
 }
 
 public extension FileAPI {
@@ -142,6 +144,15 @@ public struct RemoteFileAPI: FileAPI {
         guard !urlS3.isEmpty else { throw APIError.decoding("пустой адрес загруженного файла") }
         let parts = UploadedFile.split(filename: filename)
         return UploadedFile(urlS3: urlS3, name: parts.name, extension: parts.extension)
+    }
+
+    public func playableVoice(urlS3: String) async throws -> Data {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "url", value: urlS3)]
+        let query = components.percentEncodedQuery ?? ""
+        let response = try await client.send(method: "GET", path: "/api/file/audio/aac?\(query)", body: nil, timeout: 60)
+        try HTTPClient.requireSuccess(response)
+        return response.body
     }
 
     public func delete(urls: [String]) async throws {

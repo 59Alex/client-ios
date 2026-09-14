@@ -65,7 +65,7 @@
 
 | Функция | Веб | Статус |
 | --- | --- | --- |
-| Голосовые и круглые видеосообщения: запись, пауза, фиксация, воспроизведение | `useChatRecorder.ts`, `VoiceMessage.tsx`, `VideoCircle.tsx` | ⬜ 🖥 проверить перекодирование webm/opus |
+| Голосовые и круглые видеосообщения: запись, пауза, фиксация, воспроизведение | `useChatRecorder.ts`, `VoiceMessage.tsx`, `VideoCircle.tsx` | 🟡 голосовые: запись AAC с удержанием, фиксация свайпом, пауза, отправка, проигрывание (webm с веба — через `/api/file/audio/aac` 🖥); кружки — ⬜ |
 | Прогрессивное видео (fMP4-сегменты) | `useProgressiveVideoSegments.ts` | ⬜ 🖥 HLS или `AVAssetResourceLoaderDelegate` |
 
 ## Этап 6. Звонки

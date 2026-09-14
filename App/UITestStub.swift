@@ -129,6 +129,7 @@ enum UITestStub {
         let messages = [
             ChatMessage(id: "00000000-0000-4000-8000-000000000001", text: "Привет! Созвонимся?", createdAtMilliseconds: base - 26 * 3_600_000, authorId: "qa-2", username: partner),
             ChatMessage(id: "00000000-0000-4000-8000-000000000002", text: "__P2P_CALL_SUMMARY__:125|\(base - 25 * 3_600_000)", createdAtMilliseconds: base - 25 * 3_600_000, authorId: "qa-1", username: "@qa_wallpaper_1"),
+            ChatMessage(id: "00000000-0000-4000-8000-000000000005", text: "", createdAtMilliseconds: base - 900_000, authorId: "qa-2", username: partner, attachments: [ChatAttachment(urlS3: "file-chat@room-qa-2/voice.m4a", name: "voice-message-2026-09-14T09-45-00-000Z", extension: ".m4a")]),
             ChatMessage(id: "00000000-0000-4000-8000-000000000003", text: "Отлично поговорили", createdAtMilliseconds: base - 600_000, authorId: "qa-1", username: "@qa_wallpaper_1", weights: [WeightRange(id: "w1", from: 0, to: 6, state: .bold)]),
             ChatMessage(id: "00000000-0000-4000-8000-000000000004", text: "Да, скинул файл", createdAtMilliseconds: base - 300_000, authorId: "qa-2", username: partner, attachments: [ChatAttachment(urlS3: "chat/plan.pdf", name: "План", extension: ".pdf"), ChatAttachment(urlS3: "file-chat/room-qa-2/photo.png", name: "photo", extension: ".png")], markers: [MarkerRange(id: "m1", from: 12, to: 15, color: "#ffe066")]),
         ]

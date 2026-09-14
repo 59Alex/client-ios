@@ -143,3 +143,39 @@ struct UploadProgressTests {
         #expect(UploadProgress.decode("oops") == nil)
     }
 }
+
+@MainActor
+@Suite("Голосовые сообщения")
+struct VoiceMessageTests {
+    @Test("имя как на вебе, распознаются m4a и mp4")
+    func naming() {
+        let date = Date(timeIntervalSince1970: 1_757_844_000.123)
+        let filename = ChatModel.voiceFilename(at: date)
+        #expect(filename.hasPrefix("voice-message-2025-09-14T10-00-00-123Z"))
+        #expect(filename.hasSuffix(".m4a"))
+        #expect(ChatAttachment(urlS3: "a", name: "voice-message-x", extension: ".m4a").kind == .voiceMessage)
+        #expect(ChatAttachment(urlS3: "a", name: "voice-message-x", extension: ".webm").kind == .voiceMessage)
+        #expect(ChatAttachment(urlS3: "a", name: "voice-message-x", extension: ".mp4").kind == .voiceMessage)
+        #expect(ChatAttachment(urlS3: "a", name: "song", extension: ".m4a").kind == .audio)
+        #expect(ChatAttachment(urlS3: "a", name: "clip", extension: ".mp4").kind == .video)
+    }
+
+    @Test("голосовое уходит сразу одним вложением и не трогает черновик")
+    func send() async throws {
+        let api = FakeChatAPI(messages: ["room": []])
+        let files = FakeFileAPI()
+        let chat = ChatModel(kind: .p2p, roomId: "room", title: "Иван", me: ChatUser(userId: "me", username: "me"), api: api, unread: nil, rtcUrl: URL(string: "wss://x")!, makeRoom: { FakeCallRoom() }, files: files)
+        await chat.load()
+        chat.draft = "недописанный текст"
+
+        #expect(await chat.sendVoiceMessage(data: Data("aac".utf8)))
+
+        let sent = try #require(await api.sent.first)
+        #expect(sent.message.isEmpty)
+        #expect(sent.attachedFiles.count == 1)
+        #expect(sent.attachedFiles.first?.kind == .voiceMessage)
+        #expect(sent.attachedFiles.first?.extension == ".m4a")
+        #expect(chat.draft == "недописанный текст")
+        #expect(chat.messages.first?.delivery == .sent)
+    }
+}

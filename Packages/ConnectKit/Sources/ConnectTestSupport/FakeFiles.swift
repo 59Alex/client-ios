@@ -69,6 +69,14 @@ public actor FakeFileAPI: FileAPI {
         return UploadedFile(urlS3: url, name: parts.name, extension: parts.extension)
     }
 
+    public private(set) var playableVoiceRequests: [String] = []
+
+    public func playableVoice(urlS3: String) async throws -> Data {
+        playableVoiceRequests.append(urlS3)
+        guard let data = stored[urlS3] else { throw URLError(.fileDoesNotExist) }
+        return data
+    }
+
     public func delete(urls: [String]) async throws {
         deletedUrls.append(contentsOf: urls)
         urls.forEach { stored[$0] = nil }
